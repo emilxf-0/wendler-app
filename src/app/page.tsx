@@ -1,65 +1,181 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { finishTmBumpReset, rowToSnapshot } from "@/lib/domain/programFlow";
+import { applyTmBumps, standardBumpDeltas } from "@/lib/domain/tm";
+import {
+  loadProgram,
+  loadSettings,
+  saveProgram,
+  saveSettings,
+} from "@/lib/db";
+
+export default function HomePage() {
+  const [pendingBump, setPendingBump] = useState(false);
+  const [phaseLabel, setPhaseLabel] = useState("");
+  const [microWeek, setMicroWeek] = useState(1);
+
+  useEffect(() => {
+    void (async () => {
+      const program = await loadProgram();
+      setPendingBump(program.pendingTmBump);
+      setMicroWeek(program.microWeek);
+      const phase =
+        program.phase === "leader"
+          ? "Leader"
+          : program.phase === "anchor"
+            ? "Anchor"
+            : "7th week · Deload";
+      setPhaseLabel(phase);
+    })();
+  }, []);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-white">
+          Dashboard
+        </h1>
+        <p className="mt-2 text-zinc-400">
+          Current phase:{" "}
+          <span className="font-medium text-zinc-200">{phaseLabel}</span>
+          <span className="text-zinc-500">
+            {" "}
+            · Micro-wave week {microWeek}
+          </span>
+        </p>
+      </div>
+
+      {pendingBump ? (
+        <TmBumpCard onApplied={() => setPendingBump(false)} />
+      ) : null}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Link
+          href="/workout/today"
+          className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-5 transition hover:border-emerald-700/60 hover:bg-zinc-900"
+        >
+          <div className="text-lg font-medium text-white">Log today</div>
+          <p className="mt-1 text-sm text-zinc-400">
+            Prescribed mains, supplemental work, and assistance notes.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+        </Link>
+        <Link
+          href="/program"
+          className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-5 transition hover:border-emerald-700/60 hover:bg-zinc-900"
+        >
+          <div className="text-lg font-medium text-white">Program</div>
+          <p className="mt-1 text-sm text-zinc-400">
+            Leader template, Anchor template, and weekly frequency.
+          </p>
+        </Link>
+        <Link
+          href="/setup"
+          className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-5 transition hover:border-emerald-700/60 hover:bg-zinc-900"
+        >
+          <div className="text-lg font-medium text-white">Training maxes</div>
+          <p className="mt-1 text-sm text-zinc-400">
+            Units, rounding, TM bumps, and suggested TM from reps.
+          </p>
+        </Link>
+        <Link
+          href="/history"
+          className="rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-5 transition hover:border-emerald-700/60 hover:bg-zinc-900"
+        >
+          <div className="text-lg font-medium text-white">History</div>
+          <p className="mt-1 text-sm text-zinc-400">
+            Recent sessions saved on this device.
+          </p>
+        </Link>
+      </div>
+
+      <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+        <h2 className="font-medium text-white">TM sanity check</h2>
+        <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+          Forever programming expects conservative training maxes so bar speed
+          stays honest — typically around 85–90% of an estimated 1RM. Increase TM
+          only by small steps between blocks unless testing dictates otherwise.
+        </p>
+      </section>
+    </div>
+  );
+}
+
+function TmBumpCard({ onApplied }: { onApplied: () => void }) {
+  const [busy, setBusy] = useState(false);
+
+  async function applyAutomaticBump() {
+    const ok = window.confirm(
+      "Apply standard TM bumps from Setup (upper / lower) and start the next Leader block?",
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const settings = await loadSettings();
+      const row = await loadProgram();
+      const deltas = standardBumpDeltas({
+        tmBumpUpper: settings.tmBumpUpper,
+        tmBumpLower: settings.tmBumpLower,
+      });
+      const nextTms = applyTmBumps(settings.trainingMaxes, deltas);
+      await saveSettings({ ...settings, trainingMaxes: nextTms });
+      await saveProgram({
+        ...row,
+        ...finishTmBumpReset(rowToSnapshot(row)),
+      });
+      onApplied();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function skipAutomaticBump() {
+    const ok = window.confirm(
+      "Skip automatic bumps and only reset programming to Leader week 1? Edit TM manually in Setup.",
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const row = await loadProgram();
+      await saveProgram({
+        ...row,
+        ...finishTmBumpReset(rowToSnapshot(row)),
+      });
+      onApplied();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-amber-700/50 bg-amber-950/40 p-4">
+      <h2 className="font-semibold text-amber-100">
+        Training max bump pending
+      </h2>
+      <p className="mt-2 text-sm text-amber-200/80">
+        Anchor block finished. Apply your usual small jumps (defaults: upper-body +
+        bump size / lower-body + bump size), review them on the Setup page, then
+        roll into the next Leader phase.
+      </p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={busy}
+          className="rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-black hover:bg-amber-500 disabled:opacity-50"
+          onClick={() => void applyAutomaticBump()}
+        >
+          Apply bumps & continue
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-900 disabled:opacity-50"
+          onClick={() => void skipAutomaticBump()}
+        >
+          Skip bumps (manual TM)
+        </button>
+      </div>
     </div>
   );
 }
