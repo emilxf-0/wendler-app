@@ -1,10 +1,15 @@
 import type {
   ActiveProgramSnapshot,
+  BbbLeaderMainTopSet,
   LiftId,
   MicroWeek,
   SupplementalLiftMode,
 } from "./types";
 import { getTemplate } from "./templates";
+
+export function normalizeBbbLeaderMainTopSet(v: unknown): BbbLeaderMainTopSet {
+  return v === "fixed" ? "fixed" : "amrap";
+}
 
 export function rowToSnapshot(row: {
   leaderTemplateId: string;
@@ -19,6 +24,7 @@ export function rowToSnapshot(row: {
   anchorCyclesCompleted: number;
   pendingTmBump: boolean;
   pendingTmRestartToLeader: boolean;
+  bbbLeaderMainTopSet: BbbLeaderMainTopSet;
 }): ActiveProgramSnapshot {
   return {
     leaderTemplateId: row.leaderTemplateId,
@@ -33,6 +39,7 @@ export function rowToSnapshot(row: {
     anchorCyclesCompleted: row.anchorCyclesCompleted,
     pendingTmBump: row.pendingTmBump,
     pendingTmRestartToLeader: row.pendingTmRestartToLeader,
+    bbbLeaderMainTopSet: row.bbbLeaderMainTopSet,
   };
 }
 export function defaultActiveProgram(
@@ -51,6 +58,7 @@ export function defaultActiveProgram(
     anchorCyclesCompleted: 0,
     pendingTmBump: false,
     pendingTmRestartToLeader: false,
+    bbbLeaderMainTopSet: "amrap",
     ...overrides,
   };
 }

@@ -25,18 +25,7 @@ describe("Full backup JSON", () => {
     const defs = defaultActiveProgram({ workoutIndexInMicroWeek: 1 });
     await saveProgram({
       id: "default",
-      leaderTemplateId: defs.leaderTemplateId,
-      anchorTemplateId: defs.anchorTemplateId,
-      frequency: defs.frequency,
-      leaderCyclesTarget: defs.leaderCyclesTarget,
-      anchorCyclesTarget: defs.anchorCyclesTarget,
-      phase: defs.phase,
-      microWeek: defs.microWeek,
-      workoutIndexInMicroWeek: defs.workoutIndexInMicroWeek,
-      leaderCyclesCompleted: defs.leaderCyclesCompleted,
-      anchorCyclesCompleted: defs.anchorCyclesCompleted,
-      pendingTmBump: defs.pendingTmBump,
-      pendingTmRestartToLeader: defs.pendingTmRestartToLeader,
+      ...defs,
     });
 
     await saveSettings({

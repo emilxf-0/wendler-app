@@ -76,6 +76,7 @@ function buildOneSession(params: {
     supplementalTm: trainingMaxes[supplementalLift] ?? 0,
     roundingIncrement: settings.roundingIncrement,
     supplementalBbbPercentOverride: settings.supplementalBbbPercentOverride,
+    bbbLeaderMainTopSet: snapshot.bbbLeaderMainTopSet,
   });
 
   const { mainSets, supplemental } = completedSessionLogsFromPrescription({

@@ -2,6 +2,8 @@ import Dexie from "dexie";
 import { describe, expect, it, beforeEach } from "vitest";
 import {
   addSession,
+  deleteSession,
+  listAllSessions,
   loadProgram,
   saveProgram,
 } from "@/lib/db";
@@ -19,18 +21,7 @@ describe("IndexedDB persistence", () => {
     const fresh = defaultActiveProgram({ workoutIndexInMicroWeek: 2 });
     await saveProgram({
       id: "default",
-      leaderTemplateId: fresh.leaderTemplateId,
-      anchorTemplateId: fresh.anchorTemplateId,
-      frequency: fresh.frequency,
-      leaderCyclesTarget: fresh.leaderCyclesTarget,
-      anchorCyclesTarget: fresh.anchorCyclesTarget,
-      phase: fresh.phase,
-      microWeek: fresh.microWeek,
-      workoutIndexInMicroWeek: fresh.workoutIndexInMicroWeek,
-      leaderCyclesCompleted: fresh.leaderCyclesCompleted,
-      anchorCyclesCompleted: fresh.anchorCyclesCompleted,
-      pendingTmBump: fresh.pendingTmBump,
-      pendingTmRestartToLeader: fresh.pendingTmRestartToLeader,
+      ...fresh,
     });
 
     const loaded = await loadProgram();
@@ -57,5 +48,39 @@ describe("IndexedDB persistence", () => {
     const { getDb } = await import("@/lib/db/schema");
     const stored = await getDb()!.sessions.get(id as number);
     expect(stored?.assistanceNotes).toBe("rows + dips");
+  });
+
+  it("deleteSession removes one session only", async () => {
+    const id1 = await addSession({
+      createdAt: Date.now(),
+      lift: "squat",
+      phase: "leader",
+      microWeek: 1,
+      workoutIndexInMicroWeek: 0,
+      leaderTemplateId: "bbb",
+      anchorTemplateId: "original_anchor",
+      mainSets: [],
+      supplemental: [],
+      assistanceNotes: "",
+    });
+    await addSession({
+      createdAt: Date.now(),
+      lift: "bench",
+      phase: "leader",
+      microWeek: 1,
+      workoutIndexInMicroWeek: 1,
+      leaderTemplateId: "bbb",
+      anchorTemplateId: "original_anchor",
+      mainSets: [],
+      supplemental: [],
+      assistanceNotes: "",
+    });
+    expect(typeof id1).toBe("number");
+    await deleteSession(id1 as number);
+
+    resetDbSingletonForTests();
+    const remaining = await listAllSessions();
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]?.lift).toBe("bench");
   });
 });

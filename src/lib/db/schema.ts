@@ -1,6 +1,11 @@
 import Dexie, { type Table } from "dexie";
 import type { AssistancePresetsByCategory } from "@/lib/domain/assistanceCatalog";
-import type { LiftId, Phase, SupplementalLiftMode } from "@/lib/domain/types";
+import type {
+  BbbLeaderMainTopSet,
+  LiftId,
+  Phase,
+  SupplementalLiftMode,
+} from "@/lib/domain/types";
 
 export interface SettingsRow {
   id: string;
@@ -36,6 +41,7 @@ export interface ProgramRow {
   anchorCyclesCompleted: number;
   pendingTmBump: boolean;
   pendingTmRestartToLeader: boolean;
+  bbbLeaderMainTopSet: BbbLeaderMainTopSet;
 }
 
 export interface SetLogRow {

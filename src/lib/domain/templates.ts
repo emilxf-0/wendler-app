@@ -84,6 +84,11 @@ export function getTemplate(id: string): TemplateDefinition | undefined {
   return byId[id];
 }
 
+export function leaderTemplateUsesBbb(leaderTemplateId: string): boolean {
+  const t = getTemplate(leaderTemplateId);
+  return t?.supplemental.kind === "bbb";
+}
+
 /** BBB volume as fraction of TM for a Leader template (50% fallback if not BBB). */
 export function defaultBbbFractionForLeaderTemplate(
   leaderTemplateId: string,

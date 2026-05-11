@@ -10,6 +10,8 @@ import {
 } from "@/lib/domain/assistanceCatalog";
 import { LIFT_LABEL } from "@/lib/domain/types";
 import {
+  clearAllSessions,
+  deleteSession,
   listAllSessions,
   loadSettings,
   recordBackupExportSuccess,
@@ -28,6 +30,8 @@ export default function HistoryPage() {
   const [settings, setSettings] = useState<SettingsRow | null>(null);
   const [backupBusy, setBackupBusy] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
+  const [deleteBusyId, setDeleteBusyId] = useState<number | null>(null);
+  const [clearAllBusy, setClearAllBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function refresh() {
@@ -130,6 +134,45 @@ export default function HistoryPage() {
     }
   }
 
+  async function handleDeleteSession(session: SessionRow) {
+    if (session.id == null) return;
+    const when = new Date(session.createdAt).toLocaleString();
+    const ok = window.confirm(
+      `Remove this logged workout (${LIFT_LABEL[session.lift]} · ${when})? This does not move your program back a step — only the history entry is deleted.`,
+    );
+    if (!ok) return;
+    setDeleteBusyId(session.id);
+    try {
+      const did = await deleteSession(session.id);
+      if (!did) {
+        window.alert("Could not delete this workout.");
+        return;
+      }
+      await refresh();
+    } finally {
+      setDeleteBusyId(null);
+    }
+  }
+
+  async function handleClearAllSessions() {
+    if (sessions.length === 0) return;
+    const ok = window.confirm(
+      `Delete all ${sessions.length} logged workouts on this device? Your setup and current program stay the same.`,
+    );
+    if (!ok) return;
+    setClearAllBusy(true);
+    try {
+      const did = await clearAllSessions();
+      if (!did) {
+        window.alert("Could not clear workout history.");
+        return;
+      }
+      await refresh();
+    } finally {
+      setClearAllBusy(false);
+    }
+  }
+
   const backupLabel =
     settings?.lastBackupAt != null ? (
       <span>
@@ -196,6 +239,30 @@ export default function HistoryPage() {
         </div>
       </section>
 
+      <section className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-5 sm:p-6">
+        <h2 className="text-lg font-medium text-white sm:text-xl">Delete workout logs</h2>
+        <p className="mt-3 text-base leading-relaxed text-zinc-400 sm:text-lg">
+          Drop individual sessions below, or wipe every logged workout — useful after a bad import or synthetic
+          backfill test. Downloads and progress charts reflect what remains in history.
+        </p>
+        <div className="mt-5">
+          <button
+            type="button"
+            disabled={
+              backupBusy ||
+              importBusy ||
+              clearAllBusy ||
+              deleteBusyId != null ||
+              sessions.length === 0
+            }
+            onClick={() => void handleClearAllSessions()}
+            className="min-h-11 rounded-xl border border-rose-800/80 bg-rose-950/30 px-5 py-2.5 text-base font-medium text-rose-100 transition hover:border-rose-600 hover:bg-rose-950/50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {clearAllBusy ? "Clearing…" : "Clear all workout history"}
+          </button>
+        </div>
+      </section>
+
       {sessions.length === 0 ? (
         <p className="text-base text-zinc-500 sm:text-lg">
           No workouts logged yet.
@@ -216,12 +283,29 @@ export default function HistoryPage() {
                     {session.phase} · Week {session.microWeek}
                   </div>
                 </div>
-                <time
-                  className="text-sm text-zinc-400 sm:text-base"
-                  dateTime={new Date(session.createdAt).toISOString()}
-                >
-                  {new Date(session.createdAt).toLocaleString()}
-                </time>
+                <div className="flex shrink-0 flex-wrap items-start justify-end gap-2">
+                  <time
+                    className="text-sm text-zinc-400 sm:text-base"
+                    dateTime={new Date(session.createdAt).toISOString()}
+                  >
+                    {new Date(session.createdAt).toLocaleString()}
+                  </time>
+                  {session.id != null ? (
+                    <button
+                      type="button"
+                      disabled={
+                        backupBusy ||
+                        importBusy ||
+                        clearAllBusy ||
+                        deleteBusyId != null
+                      }
+                      onClick={() => void handleDeleteSession(session)}
+                      className="min-h-9 rounded-lg border border-rose-800/70 bg-transparent px-3 py-1.5 text-sm font-medium text-rose-200/95 transition hover:border-rose-500 hover:bg-rose-950/40 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {deleteBusyId === session.id ? "Removing…" : "Delete"}
+                    </button>
+                  ) : null}
+                </div>
               </div>
               <div className="mt-4 space-y-2 text-base text-zinc-400 sm:text-lg">
                 <div className="font-semibold text-zinc-200">Main work</div>

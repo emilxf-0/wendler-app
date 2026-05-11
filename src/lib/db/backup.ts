@@ -1,5 +1,6 @@
 import type { LiftId, MicroWeek, Phase } from "@/lib/domain/types";
 import { LIFTS } from "@/lib/domain/types";
+import { normalizeBbbLeaderMainTopSet } from "@/lib/domain/programFlow";
 import { PROGRAM_ID } from "./ids";
 import { normalizeStoredSettings } from "./settingsRow";
 import type {
@@ -194,6 +195,7 @@ function parseProgramRecord(record: Record<string, unknown>): ProgramRow {
     anchorCyclesCompleted,
     pendingTmBump: Boolean(record.pendingTmBump),
     pendingTmRestartToLeader: Boolean(record.pendingTmRestartToLeader),
+    bbbLeaderMainTopSet: normalizeBbbLeaderMainTopSet(record.bbbLeaderMainTopSet),
   };
 }
 

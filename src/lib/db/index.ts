@@ -1,6 +1,7 @@
 import {
   defaultActiveProgram,
   defaultSettings,
+  normalizeBbbLeaderMainTopSet,
 } from "@/lib/domain/programFlow";
 import type { ActiveProgramSnapshot } from "@/lib/domain/types";
 import { parseFullBackup, stringifyFullBackup } from "./backup";
@@ -61,6 +62,7 @@ export async function loadProgram(): Promise<ProgramRow> {
     return {
       ...row,
       pendingTmRestartToLeader: row.pendingTmRestartToLeader ?? false,
+      bbbLeaderMainTopSet: normalizeBbbLeaderMainTopSet(row.bbbLeaderMainTopSet),
     } as ProgramRow;
   const fresh = { id: PROGRAM_ID, ...defaultActiveProgram() } as ProgramRow;
   await db.program.put(fresh);
@@ -118,6 +120,31 @@ export async function listAllSessions(): Promise<SessionRow[]> {
   const db = getDb();
   if (!db) return [];
   return db.sessions.orderBy("createdAt").reverse().toArray();
+}
+
+export async function deleteSession(id: number): Promise<boolean> {
+  const db = getDb();
+  if (!db) return false;
+  try {
+    await db.sessions.delete(id);
+    return true;
+  } catch (e) {
+    console.error(e);
+    return false;
+  }
+}
+
+/** Removes every logged session. Settings and program are unchanged. */
+export async function clearAllSessions(): Promise<boolean> {
+  const db = getDb();
+  if (!db) return false;
+  try {
+    await db.sessions.clear();
+    return true;
+  } catch (e) {
+    console.error(e);
+    return false;
+  }
 }
 
 export async function recordBackupExportSuccess(): Promise<boolean> {

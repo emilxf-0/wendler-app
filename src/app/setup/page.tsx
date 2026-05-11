@@ -13,7 +13,7 @@ import {
 } from "@/lib/domain/tm";
 import type { LiftId, SupplementalLiftMode } from "@/lib/domain/types";
 import { LIFT_LABEL, LIFTS } from "@/lib/domain/types";
-import { defaultActiveProgram } from "@/lib/domain/programFlow";
+import { defaultActiveProgram, defaultSettings } from "@/lib/domain/programFlow";
 import { defaultBbbFractionForLeaderTemplate } from "@/lib/domain/templates";
 import {
   ASSISTANCE_BY_CATEGORY,
@@ -21,6 +21,7 @@ import {
   CATEGORY_LABEL,
   type AssistancePresetsByCategory,
 } from "@/lib/domain/assistanceCatalog";
+import { optionalFiniteNumberFromInput } from "@/lib/numericInput";
 import { loadProgram, loadSettings, saveSettings } from "@/lib/db";
 import type { ProgramRow, SettingsRow } from "@/lib/db/schema";
 
@@ -213,10 +214,33 @@ function BbbSupplementalControl({
   );
 }
 
+function parsePositiveKg(raw: string): number | null {
+  const n = Number(String(raw).trim());
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
 export default function SetupPage() {
   const [row, setRow] = useState<SettingsRow | null>(null);
   const [program, setProgram] = useState<ProgramRow | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [trueMaxKgByLift, setTrueMaxKgByLift] = useState<
+    Record<LiftId, string>
+  >({
+    squat: "",
+    bench: "",
+    deadlift: "",
+    press: "",
+  });
+  const [tmPercentOfTrueMaxText, setTmPercentOfTrueMaxText] = useState("90");
+  const [roundingText, setRoundingText] = useState<string | null>(null);
+  const [tmBumpUpperText, setTmBumpUpperText] = useState<string | null>(
+    null,
+  );
+  const [tmBumpLowerText, setTmBumpLowerText] = useState<string | null>(null);
+  const [trainingMaxDraftByLift, setTrainingMaxDraftByLift] = useState<
+    Partial<Record<LiftId, string>>
+  >({});
 
   useEffect(() => {
     void loadSettings().then(setRow);
@@ -231,6 +255,47 @@ export default function SetupPage() {
     await saveSettings(next);
     setSavedFlash(true);
     window.setTimeout(() => setSavedFlash(false), 1500);
+  }
+
+  const trueMaxPreviewByLift = useMemo(() => {
+    const incrementRaw = row?.roundingIncrement;
+    const increment =
+      typeof incrementRaw === "number" &&
+      Number.isFinite(incrementRaw) &&
+      incrementRaw > 0
+        ? incrementRaw
+        : defaultSettings().roundingIncrement;
+    const pctParsed = optionalFiniteNumberFromInput(tmPercentOfTrueMaxText);
+    const pct = pctParsed !== undefined ? pctParsed : 90;
+    const frac = Math.min(1, Math.max(0.01, pct / 100));
+    const next: Record<LiftId, number | null> = {
+      squat: null,
+      bench: null,
+      deadlift: null,
+      press: null,
+    };
+    for (const lift of LIFTS) {
+      const trueMax = parsePositiveKg(trueMaxKgByLift[lift]);
+      if (trueMax == null) continue;
+      const rawTm = suggestedTrainingMax(trueMax, frac);
+      next[lift] = roundWorkingWeight(rawTm, increment);
+    }
+    return next;
+  }, [trueMaxKgByLift, tmPercentOfTrueMaxText, row?.roundingIncrement]);
+
+  function applyTrueMaxDerivedTms() {
+    if (!row) return;
+    const nextTrainingMaxes = { ...row.trainingMaxes };
+    let any = false;
+    for (const lift of LIFTS) {
+      const tm = trueMaxPreviewByLift[lift];
+      if (tm != null && tm > 0) {
+        nextTrainingMaxes[lift] = tm;
+        any = true;
+      }
+    }
+    if (!any) return;
+    void persist({ ...row, trainingMaxes: nextTrainingMaxes });
   }
 
   if (!row) {
@@ -268,13 +333,16 @@ export default function SetupPage() {
             step="0.25"
             min={0.25}
             className="touch-control rounded-xl border border-zinc-700 bg-zinc-950 text-white"
-            value={row.roundingIncrement}
-            onChange={(e) =>
-              void persist({
-                ...row,
-                roundingIncrement: Number(e.target.value),
-              })
-            }
+            value={roundingText ?? String(row.roundingIncrement)}
+            onChange={(e) => {
+              const raw = e.target.value;
+              setRoundingText(raw);
+              const n = optionalFiniteNumberFromInput(raw);
+              if (n !== undefined && n >= 0.25) {
+                void persist({ ...row, roundingIncrement: n });
+              }
+            }}
+            onBlur={() => setRoundingText(null)}
           />
         </label>
       </section>
@@ -283,6 +351,85 @@ export default function SetupPage() {
         <h2 className="text-lg font-medium text-white sm:text-xl">
           Training maxes
         </h2>
+        <p className="text-base text-zinc-400">
+          Easiest when starting: enter a real or best-estimate{" "}
+          <span className="text-zinc-300">true max (1RM)</span> per lift, pick
+          how much of that number your TM should be (often 85–90%), then apply.
+          Adjust individual TMs below if you want them manually.
+        </p>
+        <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-950/50 p-4 sm:p-5">
+          <label className="flex max-w-xs flex-col gap-2 text-base">
+            <span className="text-zinc-300">
+              Training max as % of true max
+            </span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={50}
+              max={100}
+              step={1}
+              className="touch-control rounded-xl border border-zinc-700 bg-zinc-950 text-white"
+              value={tmPercentOfTrueMaxText}
+              onChange={(e) => setTmPercentOfTrueMaxText(e.target.value)}
+            />
+          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {LIFTS.map((lift) => {
+              const preview = trueMaxPreviewByLift[lift];
+              return (
+                <div key={lift} className="flex flex-col gap-2 text-base">
+                  <label className="flex flex-col gap-2">
+                    <span className="text-zinc-300">
+                      {LIFT_LABEL[lift]} — true max (kg)
+                    </span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      step={0.5}
+                      className="touch-control rounded-xl border border-zinc-700 bg-zinc-950 text-white"
+                      value={trueMaxKgByLift[lift]}
+                      placeholder="e.g. 140"
+                      onChange={(e) =>
+                        setTrueMaxKgByLift((prev) => ({
+                          ...prev,
+                          [lift]: e.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  {preview != null ? (
+                    <p className="text-sm tabular-nums text-zinc-500">
+                      Rounded TM:{" "}
+                      <span className="font-medium text-emerald-300">
+                        {preview.toFixed(2)} kg
+                      </span>{" "}
+                      (
+                      {optionalFiniteNumberFromInput(tmPercentOfTrueMaxText) ??
+                        90}
+                      % of true max)
+                    </p>
+                  ) : (
+                    <p className="text-sm text-zinc-600">Enter a true max</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            className="min-h-12 w-full rounded-xl bg-emerald-600 px-5 py-3 text-base font-semibold text-black hover:bg-emerald-500 active:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
+            disabled={
+              !LIFTS.some((l) => trueMaxPreviewByLift[l] != null)
+            }
+            onClick={applyTrueMaxDerivedTms}
+          >
+            Save calculated TMs (lifts with a true max filled)
+          </button>
+        </div>
+        <h3 className="pt-2 text-base font-medium text-zinc-200 sm:text-lg">
+          Training maxes on file
+        </h3>
         <div className="grid gap-4 sm:grid-cols-2">
           {LIFTS.map((lift) => (
             <label key={lift} className="flex flex-col gap-2 text-base">
@@ -293,15 +440,31 @@ export default function SetupPage() {
                 min={0}
                 step={0.5}
                 className="touch-control rounded-xl border border-zinc-700 bg-zinc-950 text-white"
-                value={row.trainingMaxes[lift] || ""}
+                value={
+                  trainingMaxDraftByLift[lift] ??
+                  (row.trainingMaxes[lift]
+                    ? String(row.trainingMaxes[lift])
+                    : "")
+                }
                 placeholder="0"
-                onChange={(e) =>
-                  void persist({
-                    ...row,
-                    trainingMaxes: {
-                      ...row.trainingMaxes,
-                      [lift]: Number(e.target.value),
-                    },
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  setTrainingMaxDraftByLift((d) => ({ ...d, [lift]: raw }));
+                  const n = optionalFiniteNumberFromInput(raw);
+                  if (n !== undefined && n >= 0) {
+                    void persist({
+                      ...row,
+                      trainingMaxes: {
+                        ...row.trainingMaxes,
+                        [lift]: n,
+                      },
+                    });
+                  }
+                }}
+                onBlur={() =>
+                  setTrainingMaxDraftByLift((d) => {
+                    const { [lift]: _, ...rest } = d;
+                    return rest;
                   })
                 }
               />
@@ -434,13 +597,16 @@ export default function SetupPage() {
               step={0.5}
               min={0}
               className="touch-control rounded-xl border border-zinc-700 bg-zinc-950 text-white"
-              value={row.tmBumpUpper}
-              onChange={(e) =>
-                void persist({
-                  ...row,
-                  tmBumpUpper: Number(e.target.value),
-                })
-              }
+              value={tmBumpUpperText ?? String(row.tmBumpUpper)}
+              onChange={(e) => {
+                const raw = e.target.value;
+                setTmBumpUpperText(raw);
+                const n = optionalFiniteNumberFromInput(raw);
+                if (n !== undefined && n >= 0) {
+                  void persist({ ...row, tmBumpUpper: n });
+                }
+              }}
+              onBlur={() => setTmBumpUpperText(null)}
             />
           </label>
           <label className="flex max-w-[14rem] flex-col gap-2 text-base">
@@ -452,13 +618,16 @@ export default function SetupPage() {
               step={0.5}
               min={0}
               className="touch-control rounded-xl border border-zinc-700 bg-zinc-950 text-white"
-              value={row.tmBumpLower}
-              onChange={(e) =>
-                void persist({
-                  ...row,
-                  tmBumpLower: Number(e.target.value),
-                })
-              }
+              value={tmBumpLowerText ?? String(row.tmBumpLower)}
+              onChange={(e) => {
+                const raw = e.target.value;
+                setTmBumpLowerText(raw);
+                const n = optionalFiniteNumberFromInput(raw);
+                if (n !== undefined && n >= 0) {
+                  void persist({ ...row, tmBumpLower: n });
+                }
+              }}
+              onBlur={() => setTmBumpLowerText(null)}
             />
           </label>
         </div>
@@ -524,16 +693,19 @@ function TmEstimator({
   onPersist: (next: SettingsRow) => void;
 }) {
   const [lift, setLift] = useState<LiftId>("squat");
-  const [weight, setWeight] = useState(100);
-  const [reps, setReps] = useState(5);
-  const [fraction, setFraction] = useState(0.9);
+  const [weightText, setWeightText] = useState("100");
+  const [repsText, setRepsText] = useState("5");
+  const [fractionText, setFractionText] = useState("0.9");
 
   const suggestion = useMemo(() => {
+    const weight = optionalFiniteNumberFromInput(weightText) ?? 0;
+    const reps = Math.round(optionalFiniteNumberFromInput(repsText) ?? 0);
+    const fraction = optionalFiniteNumberFromInput(fractionText) ?? 0.9;
     const e1 = estimateOneRepMax(weight, reps);
     const rawTm = suggestedTrainingMax(e1, fraction);
     const tm = roundWorkingWeight(rawTm, row.roundingIncrement);
     return { e1, tm };
-  }, [weight, reps, fraction, row.roundingIncrement]);
+  }, [weightText, repsText, fractionText, row.roundingIncrement]);
 
   return (
     <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 sm:p-6">
@@ -572,8 +744,8 @@ function TmEstimator({
             min={0.5}
             max={1}
             className="touch-control rounded-xl border border-zinc-700 bg-zinc-950 text-white"
-            value={fraction}
-            onChange={(e) => setFraction(Number(e.target.value))}
+            value={fractionText}
+            onChange={(e) => setFractionText(e.target.value)}
           />
         </label>
         <label className="flex flex-col gap-2 text-base">
@@ -583,8 +755,8 @@ function TmEstimator({
             min={0}
             step={0.5}
             className="touch-control rounded-xl border border-zinc-700 bg-zinc-950 text-white"
-            value={weight}
-            onChange={(e) => setWeight(Number(e.target.value))}
+            value={weightText}
+            onChange={(e) => setWeightText(e.target.value)}
           />
         </label>
         <label className="flex flex-col gap-2 text-base">
@@ -593,8 +765,8 @@ function TmEstimator({
             type="number"
             min={1}
             className="touch-control rounded-xl border border-zinc-700 bg-zinc-950 text-white"
-            value={reps}
-            onChange={(e) => setReps(Number(e.target.value))}
+            value={repsText}
+            onChange={(e) => setRepsText(e.target.value)}
           />
         </label>
       </div>
@@ -606,7 +778,11 @@ function TmEstimator({
           </span>
         </div>
         <div className="mt-2">
-          Suggested TM ({Math.round(fraction * 100)}%):{" "}
+          Suggested TM (
+          {Math.round(
+            (optionalFiniteNumberFromInput(fractionText) ?? 0.9) * 100,
+          )}
+          %):{" "}
           <span className="font-medium text-white">
             {suggestion.tm.toFixed(1)} kg
           </span>

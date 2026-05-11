@@ -13,6 +13,9 @@ export type TopSetKind =
   | "amrap"
   | "pr_goal"; // user-defined goal reps; same prescribed weight as amrap top
 
+/** Leader BBB mains only: classic PR-set week vs Forever-style 5's PRO (no AMRAP top). */
+export type BbbLeaderMainTopSet = Extract<TopSetKind, "amrap" | "fixed">;
+
 export interface MainSetPrescription {
   percentTm: number;
   repsTarget: number | "amrap";
@@ -91,6 +94,11 @@ export interface ActiveProgramSnapshot {
   pendingTmBump: boolean;
   /** True only after finishing the full Anchor block; Dashboard then restarts Leader. */
   pendingTmRestartToLeader: boolean;
+  /**
+   * Leader phase only: applies when `leaderTemplateId` is a BBB template (`bbb`, `bbb_351`).
+   * PR sets = AMRAP top working set; 5's PRO = prescribed reps on every main set (no AMRAP).
+   */
+  bbbLeaderMainTopSet: BbbLeaderMainTopSet;
 }
 
 export const LIFTS: LiftId[] = ["squat", "bench", "deadlift", "press"];

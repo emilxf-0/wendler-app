@@ -88,6 +88,7 @@ export default function TodayPage() {
       supplementalTm: settings.trainingMaxes[supplementalLift] ?? 0,
       roundingIncrement: settings.roundingIncrement,
       supplementalBbbPercentOverride: settings.supplementalBbbPercentOverride,
+      bbbLeaderMainTopSet: snapshot.bbbLeaderMainTopSet,
     });
   }, [snapshot, lift, settings, supplementalLift]);
 

@@ -10,8 +10,11 @@ import {
   type AdvancedPositionPatch,
 } from "@/lib/domain/programBackfill";
 import { defaultActiveProgram, rowToSnapshot } from "@/lib/domain/programFlow";
-import { templatesForRole } from "@/lib/domain/templates";
-import type { LiftId, Phase } from "@/lib/domain/types";
+import {
+  leaderTemplateUsesBbb,
+  templatesForRole,
+} from "@/lib/domain/templates";
+import type { BbbLeaderMainTopSet, LiftId, Phase } from "@/lib/domain/types";
 import { LIFT_LABEL, LIFTS } from "@/lib/domain/types";
 import {
   bulkAddSessionsAndSaveProgram,
@@ -20,11 +23,18 @@ import {
   persistSettingsAndProgram,
   saveProgram,
 } from "@/lib/db";
+import { optionalFiniteNumberFromInput } from "@/lib/numericInput";
 import type { ProgramRow } from "@/lib/db/schema";
 
 export default function ProgramPage() {
   const [row, setRow] = useState<ProgramRow | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [leaderCyclesDraft, setLeaderCyclesDraft] = useState<string | null>(
+    null,
+  );
+  const [anchorCyclesDraft, setAnchorCyclesDraft] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     void loadProgram().then(setRow);
@@ -39,6 +49,11 @@ export default function ProgramPage() {
 
   const leaders = useMemo(() => templatesForRole("leader"), []);
   const anchors = useMemo(() => templatesForRole("anchor"), []);
+  const leaderUsesBbb = useMemo(
+    () =>
+      row ? leaderTemplateUsesBbb(row.leaderTemplateId) : false,
+    [row?.leaderTemplateId],
+  );
 
   if (!row) {
     return (
@@ -98,6 +113,66 @@ export default function ProgramPage() {
         onSelect={(id) => void persist({ ...row, leaderTemplateId: id })}
       />
 
+      {leaderUsesBbb ? (
+        <section className="space-y-5 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 sm:p-6">
+          <h2 className="text-lg font-medium text-white sm:text-xl">
+            BBB · main barbell sets
+          </h2>
+          <p className="text-base leading-relaxed text-zinc-400">
+            Leader phase only. Classic Forever BBB often uses a PR-style top set
+            (AMRAP).{" "}
+            {"5's PRO"} keeps each ramp set to prescribed reps — no AMRAP on the
+            final working set.
+          </p>
+          <fieldset className="space-y-3">
+            <legend className="sr-only">BBB main work style</legend>
+            {(
+              [
+                {
+                  value: "amrap" as const,
+                  title: "PR set (AMRAP top)",
+                  hint: 'Third ramp set is "reps +". Leave something in the tank with BBB fatigue.',
+                },
+                {
+                  value: "fixed" as const,
+                  title: "5's PRO (prescribed reps)",
+                  hint: "Three ramp sets, fixed reps each — steady bar speed, no prescribed AMRAP.",
+                },
+              ] satisfies Readonly<
+                Array<{
+                  value: BbbLeaderMainTopSet;
+                  title: string;
+                  hint: string;
+                }>
+              >
+            ).map(({ value, title, hint }) => (
+              <label
+                key={value}
+                className="flex cursor-pointer gap-3 rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-emerald-500/70"
+              >
+                <input
+                  type="radio"
+                  name="bbbLeaderMainTopSet"
+                  className="touch-checkbox mt-1 accent-emerald-500"
+                  checked={row.bbbLeaderMainTopSet === value}
+                  onChange={() =>
+                    void persist({ ...row, bbbLeaderMainTopSet: value })
+                  }
+                />
+                <span className="min-w-0">
+                  <span className="block text-base font-medium text-white">
+                    {title}
+                  </span>
+                  <span className="mt-1 block text-sm text-zinc-500 sm:text-base">
+                    {hint}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+        </section>
+      ) : null}
+
       <TemplatePicker
         title="Anchor template"
         templates={anchors}
@@ -117,13 +192,16 @@ export default function ProgramPage() {
               min={1}
               max={6}
               className="touch-control w-32 rounded-xl border border-zinc-700 bg-zinc-950 text-white"
-              value={row.leaderCyclesTarget}
-              onChange={(e) =>
-                void persist({
-                  ...row,
-                  leaderCyclesTarget: Number(e.target.value),
-                })
-              }
+              value={leaderCyclesDraft ?? String(row.leaderCyclesTarget)}
+              onChange={(e) => {
+                const raw = e.target.value;
+                setLeaderCyclesDraft(raw);
+                const n = optionalFiniteNumberFromInput(raw);
+                if (n === undefined) return;
+                const v = Math.min(6, Math.max(1, Math.round(n)));
+                void persist({ ...row, leaderCyclesTarget: v });
+              }}
+              onBlur={() => setLeaderCyclesDraft(null)}
             />
           </label>
           <label className="flex flex-col gap-2 text-base">
@@ -135,13 +213,16 @@ export default function ProgramPage() {
               min={1}
               max={6}
               className="touch-control w-32 rounded-xl border border-zinc-700 bg-zinc-950 text-white"
-              value={row.anchorCyclesTarget}
-              onChange={(e) =>
-                void persist({
-                  ...row,
-                  anchorCyclesTarget: Number(e.target.value),
-                })
-              }
+              value={anchorCyclesDraft ?? String(row.anchorCyclesTarget)}
+              onChange={(e) => {
+                const raw = e.target.value;
+                setAnchorCyclesDraft(raw);
+                const n = optionalFiniteNumberFromInput(raw);
+                if (n === undefined) return;
+                const v = Math.min(6, Math.max(1, Math.round(n)));
+                void persist({ ...row, anchorCyclesTarget: v });
+              }}
+              onBlur={() => setAnchorCyclesDraft(null)}
             />
           </label>
         </div>
@@ -178,6 +259,7 @@ export default function ProgramPage() {
                 frequency: row.frequency,
                 leaderCyclesTarget: row.leaderCyclesTarget,
                 anchorCyclesTarget: row.anchorCyclesTarget,
+                bbbLeaderMainTopSet: row.bbbLeaderMainTopSet,
               }),
               id: row.id,
             });
@@ -198,6 +280,12 @@ export default function ProgramPage() {
     </div>
   );
 }
+
+type AdvancedNumericDraftField =
+  | "microWeek"
+  | "workoutIndexInMicroWeek"
+  | "leaderCyclesCompleted"
+  | "anchorCyclesCompleted";
 
 function BackfillSection({
   row,
@@ -231,9 +319,10 @@ function BackfillSection({
       pendingTmBump: row.pendingTmBump,
       pendingTmRestartToLeader: row.pendingTmRestartToLeader ?? false,
     });
+    setAdvDraft({});
   }, [row]);
 
-  const [replayWaves, setReplayWaves] = useState(2);
+  const [replayWavesText, setReplayWavesText] = useState("2");
   const [replayIncludeDeload, setReplayIncludeDeload] = useState(false);
   const [replayStartLocal, setReplayStartLocal] = useState(() => {
     const d = new Date();
@@ -248,6 +337,12 @@ function BackfillSection({
     deadlift: 0,
     press: 0,
   });
+  const [advDraft, setAdvDraft] = useState<
+    Partial<Record<AdvancedNumericDraftField, string>>
+  >({});
+  const [replayTmDrafts, setReplayTmDrafts] = useState<
+    Partial<Record<LiftId, string>>
+  >({});
   const [replayWriteEndTmsToSetup, setReplayWriteEndTmsToSetup] =
     useState(false);
   const [backfillBusy, setBackfillBusy] = useState(false);
@@ -255,12 +350,15 @@ function BackfillSection({
   useEffect(() => {
     void loadSettings().then((s) => {
       setReplayStartTms({ ...s.trainingMaxes });
+      setReplayTmDrafts({});
     });
   }, []);
 
   async function runHistoryReplay() {
-    const waves = Math.floor(replayWaves);
-    if (waves < 1) {
+    const wavesParsed = optionalFiniteNumberFromInput(replayWavesText);
+    const waves =
+      wavesParsed !== undefined ? Math.floor(wavesParsed) : Number.NaN;
+    if (!Number.isFinite(waves) || waves < 1) {
       window.alert("Enter at least 1 Leader wave to simulate.");
       return;
     }
@@ -291,6 +389,7 @@ function BackfillSection({
         frequency: row.frequency,
         leaderCyclesTarget: row.leaderCyclesTarget,
         anchorCyclesTarget: row.anchorCyclesTarget,
+        bbbLeaderMainTopSet: row.bbbLeaderMainTopSet,
       });
       const replaySettings = {
         roundingIncrement: settings.roundingIncrement,
@@ -449,12 +548,20 @@ function BackfillSection({
               min={1}
               max={3}
               className="touch-control rounded-xl border border-zinc-700 bg-zinc-950 text-white"
-              value={adv.microWeek}
-              onChange={(e) =>
-                setAdv((a) => ({
-                  ...a,
-                  microWeek: Number(e.target.value),
-                }))
+              value={advDraft.microWeek ?? String(adv.microWeek)}
+              onChange={(e) => {
+                const raw = e.target.value;
+                setAdvDraft((d) => ({ ...d, microWeek: raw }));
+                const n = optionalFiniteNumberFromInput(raw);
+                if (n === undefined) return;
+                const v = Math.min(3, Math.max(1, Math.round(n)));
+                setAdv((a) => ({ ...a, microWeek: v }));
+              }}
+              onBlur={() =>
+                setAdvDraft((d) => {
+                  const { microWeek: _, ...rest } = d;
+                  return rest;
+                })
               }
             />
           </label>
@@ -467,12 +574,26 @@ function BackfillSection({
               min={0}
               max={maxIx}
               className="touch-control rounded-xl border border-zinc-700 bg-zinc-950 text-white"
-              value={adv.workoutIndexInMicroWeek}
-              onChange={(e) =>
-                setAdv((a) => ({
-                  ...a,
-                  workoutIndexInMicroWeek: Number(e.target.value),
-                }))
+              value={
+                advDraft.workoutIndexInMicroWeek ??
+                String(adv.workoutIndexInMicroWeek)
+              }
+              onChange={(e) => {
+                const raw = e.target.value;
+                setAdvDraft((d) => ({
+                  ...d,
+                  workoutIndexInMicroWeek: raw,
+                }));
+                const n = optionalFiniteNumberFromInput(raw);
+                if (n === undefined) return;
+                const v = Math.min(maxIx, Math.max(0, Math.round(n)));
+                setAdv((a) => ({ ...a, workoutIndexInMicroWeek: v }));
+              }}
+              onBlur={() =>
+                setAdvDraft((d) => {
+                  const { workoutIndexInMicroWeek: _, ...rest } = d;
+                  return rest;
+                })
               }
             />
           </label>
@@ -483,12 +604,26 @@ function BackfillSection({
               min={0}
               max={6}
               className="touch-control rounded-xl border border-zinc-700 bg-zinc-950 text-white"
-              value={adv.leaderCyclesCompleted}
-              onChange={(e) =>
-                setAdv((a) => ({
-                  ...a,
-                  leaderCyclesCompleted: Number(e.target.value),
-                }))
+              value={
+                advDraft.leaderCyclesCompleted ??
+                String(adv.leaderCyclesCompleted)
+              }
+              onChange={(e) => {
+                const raw = e.target.value;
+                setAdvDraft((d) => ({
+                  ...d,
+                  leaderCyclesCompleted: raw,
+                }));
+                const n = optionalFiniteNumberFromInput(raw);
+                if (n === undefined) return;
+                const v = Math.min(6, Math.max(0, Math.round(n)));
+                setAdv((a) => ({ ...a, leaderCyclesCompleted: v }));
+              }}
+              onBlur={() =>
+                setAdvDraft((d) => {
+                  const { leaderCyclesCompleted: _, ...rest } = d;
+                  return rest;
+                })
               }
             />
           </label>
@@ -499,12 +634,26 @@ function BackfillSection({
               min={0}
               max={6}
               className="touch-control rounded-xl border border-zinc-700 bg-zinc-950 text-white"
-              value={adv.anchorCyclesCompleted}
-              onChange={(e) =>
-                setAdv((a) => ({
-                  ...a,
-                  anchorCyclesCompleted: Number(e.target.value),
-                }))
+              value={
+                advDraft.anchorCyclesCompleted ??
+                String(adv.anchorCyclesCompleted)
+              }
+              onChange={(e) => {
+                const raw = e.target.value;
+                setAdvDraft((d) => ({
+                  ...d,
+                  anchorCyclesCompleted: raw,
+                }));
+                const n = optionalFiniteNumberFromInput(raw);
+                if (n === undefined) return;
+                const v = Math.min(6, Math.max(0, Math.round(n)));
+                setAdv((a) => ({ ...a, anchorCyclesCompleted: v }));
+              }}
+              onBlur={() =>
+                setAdvDraft((d) => {
+                  const { anchorCyclesCompleted: _, ...rest } = d;
+                  return rest;
+                })
               }
             />
           </label>
@@ -560,7 +709,11 @@ function BackfillSection({
           <span className="font-medium text-amber-100/95">start</span> of this
           replay; after each finished 3-week wave the generator applies bumps
           from Setup (same upper / lower kg as the Dashboard). Often fewer than{" "}
-          {Math.max(1, Math.floor(replayWaves))}×3×{row.frequency} sessions if
+          {Math.max(
+            1,
+            Math.floor(optionalFiniteNumberFromInput(replayWavesText) ?? 2),
+          )}
+          ×3×{row.frequency} sessions if
           “Leader cycles before deload” ends your block early (7th week).{" "}
           <Link
             href="/history"
@@ -579,9 +732,10 @@ function BackfillSection({
               type="button"
               className="min-h-10 rounded-lg border border-zinc-600 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-500 hover:bg-zinc-900"
               onClick={() =>
-                void loadSettings().then((s) =>
-                  setReplayStartTms({ ...s.trainingMaxes }),
-                )
+                void loadSettings().then((s) => {
+                  setReplayStartTms({ ...s.trainingMaxes });
+                  setReplayTmDrafts({});
+                })
               }
             >
               Fill from Setup
@@ -597,12 +751,28 @@ function BackfillSection({
                   min={0}
                   step={0.5}
                   className="touch-control rounded-xl border border-zinc-700 bg-zinc-950 text-white"
-                  value={replayStartTms[lift] || ""}
-                  onChange={(e) =>
-                    setReplayStartTms((prev) => ({
-                      ...prev,
-                      [lift]: Number(e.target.value),
-                    }))
+                  value={
+                    replayTmDrafts[lift] ??
+                    (replayStartTms[lift]
+                      ? String(replayStartTms[lift])
+                      : "")
+                  }
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setReplayTmDrafts((d) => ({ ...d, [lift]: raw }));
+                    const n = optionalFiniteNumberFromInput(raw);
+                    if (n !== undefined && n >= 0) {
+                      setReplayStartTms((prev) => ({
+                        ...prev,
+                        [lift]: n,
+                      }));
+                    }
+                  }}
+                  onBlur={() =>
+                    setReplayTmDrafts((d) => {
+                      const { [lift]: _, ...rest } = d;
+                      return rest;
+                    })
                   }
                 />
               </label>
@@ -617,8 +787,8 @@ function BackfillSection({
               min={1}
               max={12}
               className="touch-control w-28 rounded-xl border border-zinc-700 bg-zinc-950 text-white"
-              value={replayWaves}
-              onChange={(e) => setReplayWaves(Number(e.target.value))}
+              value={replayWavesText}
+              onChange={(e) => setReplayWavesText(e.target.value)}
             />
           </label>
           <label className="flex flex-col gap-2 text-base">

@@ -1,9 +1,11 @@
 import type {
+  BbbLeaderMainTopSet,
   LiftId,
   MicroWeek,
   Phase,
   TemplateDefinition,
   MainSetPrescription,
+  TopSetKind,
 } from "./types";
 import { LIFT_LABEL } from "./types";
 import {
@@ -111,6 +113,18 @@ export function assistanceHintFor(template: TemplateDefinition): string {
   return "Push / Pull / Single-leg·Core — commonly 50–100 reps per category; adjust down if recovery slips.";
 }
 
+function effectiveMainTopSet(params: {
+  phase: Phase;
+  template: TemplateDefinition;
+  bbbLeaderMainTopSet: BbbLeaderMainTopSet;
+}): TopSetKind {
+  const { phase, template, bbbLeaderMainTopSet } = params;
+  if (phase === "leader" && template.supplemental.kind === "bbb") {
+    return bbbLeaderMainTopSet;
+  }
+  return template.topSet;
+}
+
 export function buildWorkoutPrescription(params: {
   lift: LiftId;
   template: TemplateDefinition;
@@ -122,6 +136,8 @@ export function buildWorkoutPrescription(params: {
   supplementalTm: number;
   roundingIncrement: number;
   supplementalBbbPercentOverride: number | null;
+  /** Leader BBB templates only — ignored for Anchor/deload or non-BBB Leaders. */
+  bbbLeaderMainTopSet: BbbLeaderMainTopSet;
 }): WorkoutPrescription {
   const {
     lift,
@@ -132,6 +148,7 @@ export function buildWorkoutPrescription(params: {
     supplementalTm,
     roundingIncrement,
     supplementalBbbPercentOverride,
+    bbbLeaderMainTopSet,
   } = params;
 
   const phaseLabel =
@@ -147,7 +164,11 @@ export function buildWorkoutPrescription(params: {
       : buildMainSets({
           variant: template.mainWave,
           microWeek,
-          topSet: template.topSet,
+          topSet: effectiveMainTopSet({
+            phase,
+            template,
+            bbbLeaderMainTopSet,
+          }),
         });
 
   const supplemental =

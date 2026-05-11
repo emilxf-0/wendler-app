@@ -11,6 +11,7 @@ import {
   type AssistancePresetsByCategory,
 } from "@/lib/domain/assistanceCatalog";
 import type { AssistanceSetRow } from "@/lib/db/schema";
+import { optionalFiniteNumberFromInput } from "@/lib/numericInput";
 
 export type AssistanceLine = AssistanceSetRow & { clientKey: string };
 
@@ -74,15 +75,29 @@ function CategoryAssistanceBlock({
   const [exerciseId, setExerciseId] = useState(() =>
     presetExerciseForCategory(category, presetExerciseId),
   );
-  const [reps, setReps] = useState(10);
+  const [repsText, setRepsText] = useState("10");
   const [weightText, setWeightText] = useState("");
 
   function addOneSet() {
-    if (!exerciseId || !Number.isFinite(reps) || reps < 1) return;
+    if (!exerciseId) return;
+    const repsN = optionalFiniteNumberFromInput(repsText);
+    if (
+      repsN === undefined ||
+      !Number.isFinite(repsN) ||
+      repsN < 1
+    )
+      return;
+    const reps = Math.floor(repsN);
     const w = parseWeightKg(weightText);
     if (w === undefined) return;
     onLinesChange([...lines, newAssistanceLine(exerciseId, reps, w)]);
   }
+
+  const repsParsed = optionalFiniteNumberFromInput(repsText);
+  const repsInputOk =
+    repsParsed !== undefined &&
+    Number.isFinite(repsParsed) &&
+    repsParsed >= 1;
 
   return (
     <div className="space-y-3 border-b border-zinc-800/80 pb-5 last:border-0 last:pb-0">
@@ -113,8 +128,8 @@ function CategoryAssistanceBlock({
             max={999}
             inputMode="numeric"
             className="min-h-11 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-2 text-center text-base text-white"
-            value={reps}
-            onChange={(e) => setReps(Number(e.target.value))}
+            value={repsText}
+            onChange={(e) => setRepsText(e.target.value)}
           />
         </label>
         <label className="flex w-[5.5rem] flex-col gap-1 text-xs text-zinc-500">
@@ -135,8 +150,7 @@ function CategoryAssistanceBlock({
           onClick={addOneSet}
           disabled={
             !exerciseId ||
-            !Number.isFinite(reps) ||
-            reps < 1 ||
+            !repsInputOk ||
             parseWeightKg(weightText) === undefined
           }
         >
@@ -162,7 +176,15 @@ export function AssistanceSection({
   onLinesChange: (next: AssistanceLine[]) => void;
   presetsByCategory?: AssistancePresetsByCategory;
 }) {
+  const [loggedRepsDraftByKey, setLoggedRepsDraftByKey] = useState<
+    Record<string, string>
+  >({});
+
   function removeLine(clientKey: string) {
+    setLoggedRepsDraftByKey((d) => {
+      const { [clientKey]: _, ...rest } = d;
+      return rest;
+    });
     onLinesChange(lines.filter((l) => l.clientKey !== clientKey));
   }
 
@@ -216,10 +238,27 @@ export function AssistanceSection({
                       min={1}
                       max={999}
                       className="w-16 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-center text-base text-white"
-                      value={line.reps}
-                      onChange={(e) =>
-                        updateLine(line.clientKey, {
-                          reps: Math.max(1, Number(e.target.value)),
+                      value={
+                        loggedRepsDraftByKey[line.clientKey] ??
+                        String(line.reps)
+                      }
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setLoggedRepsDraftByKey((d) => ({
+                          ...d,
+                          [line.clientKey]: raw,
+                        }));
+                        const n = optionalFiniteNumberFromInput(raw);
+                        if (n !== undefined) {
+                          updateLine(line.clientKey, {
+                            reps: Math.max(1, Math.floor(n)),
+                          });
+                        }
+                      }}
+                      onBlur={() =>
+                        setLoggedRepsDraftByKey((d) => {
+                          const { [line.clientKey]: _, ...rest } = d;
+                          return rest;
                         })
                       }
                     />

@@ -26,6 +26,7 @@ function baseProgram(
     anchorCyclesCompleted: 0,
     pendingTmBump: false,
     pendingTmRestartToLeader: false,
+    bbbLeaderMainTopSet: "amrap",
     ...overrides,
   };
 }
