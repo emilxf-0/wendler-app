@@ -5,6 +5,7 @@ import type {
   MicroWeek,
   SupplementalLiftMode,
 } from "./types";
+import { SESSIONS_PER_MICRO_WEEK } from "./types";
 import { getTemplate } from "./templates";
 
 export function normalizeBbbLeaderMainTopSet(v: unknown): BbbLeaderMainTopSet {
@@ -14,7 +15,7 @@ export function normalizeBbbLeaderMainTopSet(v: unknown): BbbLeaderMainTopSet {
 export function rowToSnapshot(row: {
   leaderTemplateId: string;
   anchorTemplateId: string;
-  frequency: 3 | 4;
+  frequency: typeof SESSIONS_PER_MICRO_WEEK;
   leaderCyclesTarget: number;
   anchorCyclesTarget: number;
   phase: ActiveProgramSnapshot["phase"];
@@ -48,7 +49,7 @@ export function defaultActiveProgram(
   return {
     leaderTemplateId: "bbb",
     anchorTemplateId: "original_anchor",
-    frequency: 4,
+    frequency: SESSIONS_PER_MICRO_WEEK,
     leaderCyclesTarget: 2,
     anchorCyclesTarget: 2,
     phase: "leader",

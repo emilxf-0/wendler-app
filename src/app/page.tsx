@@ -81,7 +81,7 @@ export default function HomePage() {
         >
           <div className="text-xl font-semibold text-white">Program</div>
           <p className="mt-2 text-base leading-relaxed text-zinc-400">
-            Leader template, Anchor template, and weekly frequency.
+            Leader template and Anchor template.
           </p>
         </Link>
         <Link

@@ -3,7 +3,9 @@ import {
   defaultSettings,
   normalizeBbbLeaderMainTopSet,
 } from "@/lib/domain/programFlow";
+import { clampWorkoutIndexInMicroWeek } from "@/lib/domain/programBackfill";
 import type { ActiveProgramSnapshot } from "@/lib/domain/types";
+import { SESSIONS_PER_MICRO_WEEK } from "@/lib/domain/types";
 import { parseFullBackup, stringifyFullBackup } from "./backup";
 import { PROGRAM_ID, SETTINGS_ID } from "./ids";
 import { normalizeStoredSettings, storedSettingsPut } from "./settingsRow";
@@ -16,6 +18,20 @@ import {
 } from "./schema";
 
 export { PROGRAM_ID, SETTINGS_ID } from "./ids";
+
+function normalizeProgramFromDisk(
+  row: ProgramRow,
+): ProgramRow {
+  return {
+    ...row,
+    frequency: SESSIONS_PER_MICRO_WEEK,
+    workoutIndexInMicroWeek: clampWorkoutIndexInMicroWeek(
+      row.workoutIndexInMicroWeek,
+    ),
+    pendingTmRestartToLeader: row.pendingTmRestartToLeader ?? false,
+    bbbLeaderMainTopSet: normalizeBbbLeaderMainTopSet(row.bbbLeaderMainTopSet),
+  };
+}
 
 export async function loadSettings(): Promise<SettingsRow> {
   const db = getDb();
@@ -44,7 +60,7 @@ export async function persistSettingsAndProgram(
   try {
     await db.transaction("rw", db.settings, db.program, async () => {
       await db.settings.put(storedSettingsPut(settings));
-      await db.program.put(program);
+      await db.program.put(normalizeProgramFromDisk(program));
     });
     return true;
   } catch (e) {
@@ -58,12 +74,7 @@ export async function loadProgram(): Promise<ProgramRow> {
   if (!db)
     return { id: PROGRAM_ID, ...defaultActiveProgram() } as ProgramRow;
   const row = await db.program.get(PROGRAM_ID);
-  if (row)
-    return {
-      ...row,
-      pendingTmRestartToLeader: row.pendingTmRestartToLeader ?? false,
-      bbbLeaderMainTopSet: normalizeBbbLeaderMainTopSet(row.bbbLeaderMainTopSet),
-    } as ProgramRow;
+  if (row) return normalizeProgramFromDisk(row as ProgramRow);
   const fresh = { id: PROGRAM_ID, ...defaultActiveProgram() } as ProgramRow;
   await db.program.put(fresh);
   return fresh;
@@ -72,7 +83,7 @@ export async function loadProgram(): Promise<ProgramRow> {
 export async function saveProgram(row: ProgramRow): Promise<boolean> {
   const db = getDb();
   if (!db) return false;
-  await db.program.put(row);
+  await db.program.put(normalizeProgramFromDisk(row));
   return true;
 }
 
@@ -100,7 +111,7 @@ export async function bulkAddSessionsAndSaveProgram(
       if (sessions.length) {
         await db.sessions.bulkAdd(sessions as SessionRow[]);
       }
-      await db.program.put(program);
+      await db.program.put(normalizeProgramFromDisk(program));
     });
     return true;
   } catch (e) {
@@ -188,7 +199,7 @@ export async function replaceFromFullBackup(jsonText: string): Promise<
       if (data.sessions.length) {
         await db.sessions.bulkAdd(data.sessions as SessionRow[]);
       }
-      await db.program.put(data.program);
+      await db.program.put(normalizeProgramFromDisk(data.program as ProgramRow));
       await db.settings.put(storedSettingsPut(data.settings));
     });
     return { ok: true, sessionCount: data.sessions.length };

@@ -78,34 +78,6 @@ export default function ProgramPage() {
         ) : null}
       </header>
 
-      <section className="space-y-5 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 sm:p-6">
-        <h2 className="text-lg font-medium text-white sm:text-xl">
-          Weekly frequency
-        </h2>
-        <div className="flex flex-wrap gap-3">
-          {[3, 4].map((f) => (
-            <button
-              key={f}
-              type="button"
-              className={`min-h-12 rounded-xl px-5 py-3 text-base font-semibold transition ${
-                row.frequency === f
-                  ? "bg-emerald-600 text-black"
-                  : "border border-zinc-700 text-zinc-100 hover:bg-zinc-900"
-              }`}
-              onClick={() =>
-                void persist({
-                  ...row,
-                  frequency: f as 3 | 4,
-                  workoutIndexInMicroWeek: 0,
-                })
-              }
-            >
-              {f} days / week
-            </button>
-          ))}
-        </div>
-      </section>
-
       <TemplatePicker
         title="Leader template"
         templates={leaders}
@@ -256,7 +228,6 @@ export default function ProgramPage() {
               ...defaultActiveProgram({
                 leaderTemplateId: row.leaderTemplateId,
                 anchorTemplateId: row.anchorTemplateId,
-                frequency: row.frequency,
                 leaderCyclesTarget: row.leaderCyclesTarget,
                 anchorCyclesTarget: row.anchorCyclesTarget,
                 bbbLeaderMainTopSet: row.bbbLeaderMainTopSet,
@@ -375,7 +346,7 @@ function BackfillSection({
       return;
     }
     const settings = await loadSettings();
-    const minSessions = waves * 3 * row.frequency;
+    const minSessions = waves * 3 * 4;
     const okGo = window.confirm(
       `Add synthetic Leader history (${minSessions} sessions if you complete ${waves} full wave(s) before deload), then move your program to match? First session uses the “start” TMs you entered; after each 3-week wave the replay applies your Setup TM bumps (upper / lower, kg) like the Dashboard. Download a backup on History first (recommended).`,
     );
@@ -386,7 +357,6 @@ function BackfillSection({
       const startProgram = defaultActiveProgram({
         leaderTemplateId: row.leaderTemplateId,
         anchorTemplateId: row.anchorTemplateId,
-        frequency: row.frequency,
         leaderCyclesTarget: row.leaderCyclesTarget,
         anchorCyclesTarget: row.anchorCyclesTarget,
         bbbLeaderMainTopSet: row.bbbLeaderMainTopSet,
@@ -451,7 +421,7 @@ function BackfillSection({
     }
   }
 
-  const maxIx = row.frequency === 4 ? 3 : 2;
+  const maxIx = 3;
 
   return (
     <section className="space-y-8 rounded-2xl border border-zinc-700/80 bg-zinc-950/30 p-5 sm:p-6">
@@ -567,7 +537,7 @@ function BackfillSection({
           </label>
           <label className="flex flex-col gap-2 text-base">
             <span className="text-zinc-400">
-              Session slot (0–{maxIx} · {row.frequency} days/week)
+              Session slot (0–{maxIx} · four lifts per micro-wave week)
             </span>
             <input
               type="number"
@@ -713,7 +683,7 @@ function BackfillSection({
             1,
             Math.floor(optionalFiniteNumberFromInput(replayWavesText) ?? 2),
           )}
-          ×3×{row.frequency} sessions if
+          ×3×4 sessions if
           “Leader cycles before deload” ends your block early (7th week).{" "}
           <Link
             href="/history"

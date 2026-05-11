@@ -1,5 +1,6 @@
 import type { LiftId, MicroWeek, Phase } from "@/lib/domain/types";
-import { LIFTS } from "@/lib/domain/types";
+import { LIFTS, SESSIONS_PER_MICRO_WEEK } from "@/lib/domain/types";
+import { clampWorkoutIndexInMicroWeek } from "@/lib/domain/programBackfill";
 import { normalizeBbbLeaderMainTopSet } from "@/lib/domain/programFlow";
 import { PROGRAM_ID } from "./ids";
 import { normalizeStoredSettings } from "./settingsRow";
@@ -185,12 +186,12 @@ function parseProgramRecord(record: Record<string, unknown>): ProgramRow {
     id: PROGRAM_ID,
     leaderTemplateId,
     anchorTemplateId,
-    frequency,
+    frequency: SESSIONS_PER_MICRO_WEEK,
     leaderCyclesTarget,
     anchorCyclesTarget,
     phase,
     microWeek: microWeekRaw,
-    workoutIndexInMicroWeek,
+    workoutIndexInMicroWeek: clampWorkoutIndexInMicroWeek(workoutIndexInMicroWeek),
     leaderCyclesCompleted,
     anchorCyclesCompleted,
     pendingTmBump: Boolean(record.pendingTmBump),

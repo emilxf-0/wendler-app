@@ -1,10 +1,13 @@
 import Dexie, { type Table } from "dexie";
-import type { AssistancePresetsByCategory } from "@/lib/domain/assistanceCatalog";
-import type {
-  BbbLeaderMainTopSet,
-  LiftId,
-  Phase,
-  SupplementalLiftMode,
+import {
+  type AssistancePresetsByCategory,
+} from "@/lib/domain/assistanceCatalog";
+import {
+  type BbbLeaderMainTopSet,
+  type LiftId,
+  type Phase,
+  type SupplementalLiftMode,
+  SESSIONS_PER_MICRO_WEEK,
 } from "@/lib/domain/types";
 
 export interface SettingsRow {
@@ -31,7 +34,7 @@ export interface ProgramRow {
   id: string;
   leaderTemplateId: string;
   anchorTemplateId: string;
-  frequency: 3 | 4;
+  frequency: typeof SESSIONS_PER_MICRO_WEEK;
   leaderCyclesTarget: number;
   anchorCyclesTarget: number;
   phase: Phase;

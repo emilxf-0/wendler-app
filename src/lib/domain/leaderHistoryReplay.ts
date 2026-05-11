@@ -14,6 +14,7 @@ import {
   standardBumpDeltas,
 } from "@/lib/domain/tm";
 import type { ActiveProgramSnapshot, LiftId } from "@/lib/domain/types";
+import { SESSIONS_PER_MICRO_WEEK } from "@/lib/domain/types";
 
 /** Prescription fields + TM bump sizes (training maxes come from `startingTrainingMaxes` + simulated bumps). */
 export type ReplaySettings = Pick<
@@ -52,11 +53,7 @@ function buildOneSession(params: {
   createdAt: number;
 }): Omit<SessionRow, "id"> | null {
   const { snapshot, settings, trainingMaxes, createdAt } = params;
-  const lift = liftForSession({
-    frequency: snapshot.frequency,
-    microWeek: snapshot.microWeek,
-    workoutIndexInMicroWeek: snapshot.workoutIndexInMicroWeek,
-  });
+  const lift = liftForSession(snapshot.workoutIndexInMicroWeek);
   if (!lift) return null;
 
   const supplementalLift: LiftId =
@@ -188,7 +185,7 @@ export function generateCompletedSessionsThroughLeaderCycles(params: {
 
   if (includeDeloadInHistory && snap.phase === "deload") {
     let guard = 0;
-    const maxDeload = snap.frequency + 2;
+    const maxDeload = SESSIONS_PER_MICRO_WEEK + 2;
     while (snap.phase === "deload" && guard < maxDeload) {
       guard += 1;
       if (snap.pendingTmBump) {

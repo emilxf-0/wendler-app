@@ -80,10 +80,13 @@ export type Phase = "leader" | "deload" | "anchor";
 
 export type MicroWeek = 1 | 2 | 3;
 
+/** Main barbell sessions per micro-wave week (four-lift rotation). */
+export const SESSIONS_PER_MICRO_WEEK = 4 as const;
+
 export interface ActiveProgramSnapshot {
   leaderTemplateId: string;
   anchorTemplateId: string;
-  frequency: 3 | 4;
+  frequency: typeof SESSIONS_PER_MICRO_WEEK;
   leaderCyclesTarget: number;
   anchorCyclesTarget: number;
   phase: Phase;

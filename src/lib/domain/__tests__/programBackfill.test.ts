@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   applyAdvancedProgramPosition,
   clampWorkoutIndexInMicroWeek,
-  maxWorkoutIndexForFrequency,
+  maxWorkoutIndexInMicroWeek,
   presetAnchorWeek1,
   presetDeloadAfterLeaderBlock,
 } from "@/lib/domain/programBackfill";
 import type { ActiveProgramSnapshot } from "@/lib/domain/types";
+import { SESSIONS_PER_MICRO_WEEK } from "@/lib/domain/types";
 
 function baseProgram(
   overrides: Partial<ActiveProgramSnapshot> = {},
@@ -14,7 +15,7 @@ function baseProgram(
   return {
     leaderTemplateId: "bbb",
     anchorTemplateId: "original_anchor",
-    frequency: 4,
+    frequency: SESSIONS_PER_MICRO_WEEK,
     leaderCyclesTarget: 2,
     anchorCyclesTarget: 2,
     phase: "leader",
@@ -30,16 +31,11 @@ function baseProgram(
 }
 
 describe("clampWorkoutIndexInMicroWeek", () => {
-  it("clamps 4-day schedule to 0–3", () => {
-    expect(maxWorkoutIndexForFrequency(4)).toBe(3);
-    expect(clampWorkoutIndexInMicroWeek(4, -5)).toBe(0);
-    expect(clampWorkoutIndexInMicroWeek(4, 2)).toBe(2);
-    expect(clampWorkoutIndexInMicroWeek(4, 99)).toBe(3);
-  });
-
-  it("clamps 3-day schedule to 0–2", () => {
-    expect(maxWorkoutIndexForFrequency(3)).toBe(2);
-    expect(clampWorkoutIndexInMicroWeek(3, 3)).toBe(2);
+  it("clamps four-lift schedule to 0–3", () => {
+    expect(maxWorkoutIndexInMicroWeek()).toBe(3);
+    expect(clampWorkoutIndexInMicroWeek(-5)).toBe(0);
+    expect(clampWorkoutIndexInMicroWeek(2)).toBe(2);
+    expect(clampWorkoutIndexInMicroWeek(99)).toBe(3);
   });
 });
 

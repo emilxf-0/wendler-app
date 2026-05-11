@@ -55,11 +55,7 @@ export default function TodayPage() {
   ]);
 
   const lift = snapshot
-    ? liftForSession({
-        frequency: snapshot.frequency,
-        microWeek: snapshot.microWeek,
-        workoutIndexInMicroWeek: snapshot.workoutIndexInMicroWeek,
-      })
+    ? liftForSession(snapshot.workoutIndexInMicroWeek)
     : null;
 
   const supplementalLift = useMemo(() => {
@@ -125,7 +121,7 @@ export default function TodayPage() {
   if (!lift || !prescription) {
     return (
       <p className="text-base text-red-400">
-        Unable to resolve today&apos;s lift — reset Program frequency or progress.
+        Unable to resolve today&apos;s lift — reset Program progress in Program → Catch up / backfill.
       </p>
     );
   }
@@ -285,8 +281,7 @@ function TodayLogger({
           </span>
         </p>
         <p className="text-sm leading-relaxed text-zinc-500 sm:text-base">
-          Session slot {snapshot.workoutIndexInMicroWeek + 1} /{" "}
-          {snapshot.frequency} this micro-wave week · Phase{" "}
+          Session {snapshot.workoutIndexInMicroWeek + 1} of {snapshot.frequency} this micro-wave week · Phase{" "}
           {snapshot.phase === "leader"
             ? "Leader"
             : snapshot.phase === "anchor"

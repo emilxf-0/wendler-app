@@ -1,18 +1,17 @@
 import type { ActiveProgramSnapshot, MicroWeek, Phase } from "./types";
+import { SESSIONS_PER_MICRO_WEEK } from "./types";
+
+const MAX_WORKOUT_INDEX = SESSIONS_PER_MICRO_WEEK - 1;
 
 /** Upper bound (inclusive) for `workoutIndexInMicroWeek` — matches `liftForSession`. */
-export function maxWorkoutIndexForFrequency(frequency: 3 | 4): number {
-  return frequency === 4 ? 3 : 2;
+export function maxWorkoutIndexInMicroWeek(): number {
+  return MAX_WORKOUT_INDEX;
 }
 
-export function clampWorkoutIndexInMicroWeek(
-  frequency: 3 | 4,
-  workoutIndexInMicroWeek: number,
-): number {
-  const max = maxWorkoutIndexForFrequency(frequency);
+export function clampWorkoutIndexInMicroWeek(workoutIndexInMicroWeek: number): number {
   const n = Math.floor(workoutIndexInMicroWeek);
   if (!Number.isFinite(n)) return 0;
-  return Math.min(max, Math.max(0, n));
+  return Math.min(MAX_WORKOUT_INDEX, Math.max(0, n));
 }
 
 function clampMicroWeek(n: number): MicroWeek {
@@ -79,7 +78,6 @@ export function applyAdvancedProgramPosition(
     phase: patch.phase,
     microWeek: clampMicroWeek(patch.microWeek),
     workoutIndexInMicroWeek: clampWorkoutIndexInMicroWeek(
-      program.frequency,
       patch.workoutIndexInMicroWeek,
     ),
     leaderCyclesCompleted: Math.max(
