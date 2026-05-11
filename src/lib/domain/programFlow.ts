@@ -2,6 +2,7 @@ import type {
   ActiveProgramSnapshot,
   LiftId,
   MicroWeek,
+  SupplementalLiftMode,
 } from "./types";
 import { getTemplate } from "./templates";
 
@@ -17,6 +18,7 @@ export function rowToSnapshot(row: {
   leaderCyclesCompleted: number;
   anchorCyclesCompleted: number;
   pendingTmBump: boolean;
+  pendingTmRestartToLeader: boolean;
 }): ActiveProgramSnapshot {
   return {
     leaderTemplateId: row.leaderTemplateId,
@@ -30,6 +32,7 @@ export function rowToSnapshot(row: {
     leaderCyclesCompleted: row.leaderCyclesCompleted,
     anchorCyclesCompleted: row.anchorCyclesCompleted,
     pendingTmBump: row.pendingTmBump,
+    pendingTmRestartToLeader: row.pendingTmRestartToLeader,
   };
 }
 export function defaultActiveProgram(
@@ -47,6 +50,7 @@ export function defaultActiveProgram(
     leaderCyclesCompleted: 0,
     anchorCyclesCompleted: 0,
     pendingTmBump: false,
+    pendingTmRestartToLeader: false,
     ...overrides,
   };
 }
@@ -59,11 +63,15 @@ export function defaultSettings() {
     press: 0,
   };
   return {
-    units: "lb" as const,
-    roundingIncrement: 2.5,
+    roundingIncrement: 1.25,
     trainingMaxes,
-    tmBumpUpper: 5,
-    tmBumpLower: 10,
+    tmBumpUpper: 2.5,
+    tmBumpLower: 5,
+    supplementalLiftMode: "same" as SupplementalLiftMode,
+    supplementalBbbPercentOverride: null,
+    assistancePresetUpper: {},
+    assistancePresetLower: {},
+    lastBackupAt: null,
   };
 }
 
@@ -128,6 +136,11 @@ export function advanceAfterCompletedWorkout(
         milestones.push(
           `Leader cycle ${next.leaderCyclesCompleted}/${next.leaderCyclesTarget} finished.`,
         );
+        next.pendingTmBump = true;
+        next.pendingTmRestartToLeader = false;
+        milestones.push(
+          "Review or bump training maxes on the Dashboard before continuing.",
+        );
         if (next.leaderCyclesCompleted >= next.leaderCyclesTarget) {
           next.phase = "deload";
           next.microWeek = 1;
@@ -141,13 +154,18 @@ export function advanceAfterCompletedWorkout(
         milestones.push(
           `Anchor cycle ${next.anchorCyclesCompleted}/${next.anchorCyclesTarget} finished.`,
         );
+        next.pendingTmBump = true;
+        next.pendingTmRestartToLeader = false;
+        milestones.push(
+          "Review or bump training maxes on the Dashboard before continuing.",
+        );
         if (next.anchorCyclesCompleted >= next.anchorCyclesTarget) {
-          next.pendingTmBump = true;
+          next.pendingTmRestartToLeader = true;
           next.anchorCyclesCompleted = 0;
           next.microWeek = 1;
           next.workoutIndexInMicroWeek = 0;
           milestones.push(
-            "Anchor block finished — apply conservative TM increases, then start the next Leader block.",
+            "Anchor block finished — after TM review the app will restart your next block in Leader.",
           );
         }
       }
@@ -157,17 +175,25 @@ export function advanceAfterCompletedWorkout(
   return { next, milestones };
 }
 
-/** After TM bump UI — clear pending flag and return to leader phase fresh */
+/** After full Anchor block: clear TM hold and restart Leader. */
 export function finishTmBumpReset(
   program: ActiveProgramSnapshot,
 ): ActiveProgramSnapshot {
   return {
     ...program,
     pendingTmBump: false,
+    pendingTmRestartToLeader: false,
     phase: "leader",
     microWeek: 1,
     workoutIndexInMicroWeek: 0,
     leaderCyclesCompleted: 0,
     anchorCyclesCompleted: 0,
   };
+}
+
+/** After a mid-block TM review: clear hold only. */
+export function clearTmBumpHold(
+  program: ActiveProgramSnapshot,
+): ActiveProgramSnapshot {
+  return { ...program, pendingTmBump: false };
 }

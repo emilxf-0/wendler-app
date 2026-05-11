@@ -1,7 +1,7 @@
-/** Canonical barbell lifts in Wendler programming order for scheduling. */
-export type LiftId = "squat" | "bench" | "deadlift" | "press";
+/** Whether supplemental prescriptions use today's main TM or the paired UB/LB TM. */
+export type SupplementalLiftMode = "same" | "paired";
 
-export type Unit = "lb" | "kg";
+export type LiftId = "squat" | "bench" | "deadlift" | "press";
 
 export type TemplateRole = "leader" | "anchor" | "either";
 
@@ -31,18 +31,34 @@ export interface SupplementalBBB {
   percentTm: number;
 }
 
-export interface SupplementalFSL {
+/** FSL-style volume: percentages follow a chosen main-wave step (typically first working set). */
+export interface SupplementalKindFsl {
   kind: "fsl";
   sets: number;
   reps: number;
-  /** Percent TM for supplemental — typically matches first main working set of the wave */
-  percentTmFromMainIndex: 0;
+  /** Which main-set step (0 = first working, 1 = second, 2 = top) supplies the % — currently only 0 is used. */
+  percentTmFromMainIndex: 0 | 1 | 2;
+}
+
+/**
+ * Volume at a percentage taken from the current micro-week wave:
+ * step 0 ≈ FSL (first working set), 1 ≈ SSL (second), 2 ≈ top/heaviest ramp step.
+ */
+export interface SupplementalWaveStepVolume {
+  kind: "wave_step_volume";
+  sets: number;
+  reps: number;
+  waveStep: 0 | 1 | 2;
 }
 
 export type SupplementalSpec =
   | SupplementalKindNone
   | SupplementalBBB
-  | SupplementalFSL;
+  | SupplementalKindFsl
+  | SupplementalWaveStepVolume;
+
+/** Which primary bar prescription to use for the main lift of the day */
+export type PrimaryMainSequence = "standard_wave" | "five_by_five_three_one";
 
 export interface TemplateDefinition {
   id: string;
@@ -51,7 +67,9 @@ export interface TemplateDefinition {
   shortDescription: string;
   recommendedTmNote: string;
   mainWave: MainWaveVariant;
+  /** Used only when primaryMainSequence is standard_wave */
   topSet: TopSetKind;
+  primaryMainSequence: PrimaryMainSequence;
   supplemental: SupplementalSpec;
 }
 
@@ -71,14 +89,8 @@ export interface ActiveProgramSnapshot {
   leaderCyclesCompleted: number;
   anchorCyclesCompleted: number;
   pendingTmBump: boolean;
-}
-
-export interface UserSettingsSnapshot {
-  units: Unit;
-  roundingIncrement: number;
-  trainingMaxes: Record<LiftId, number>;
-  tmBumpUpper: number;
-  tmBumpLower: number;
+  /** True only after finishing the full Anchor block; Dashboard then restarts Leader. */
+  pendingTmRestartToLeader: boolean;
 }
 
 export const LIFTS: LiftId[] = ["squat", "bench", "deadlift", "press"];

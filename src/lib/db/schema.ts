@@ -1,14 +1,26 @@
 import Dexie, { type Table } from "dexie";
-import type { LiftId, Phase } from "@/lib/domain/types";
+import type { AssistancePresetsByCategory } from "@/lib/domain/assistanceCatalog";
+import type { LiftId, Phase, SupplementalLiftMode } from "@/lib/domain/types";
 
 export interface SettingsRow {
   id: string;
-  units: "lb" | "kg";
   roundingIncrement: number;
   trainingMaxes: Record<LiftId, number>;
   tmBumpUpper: number;
   tmBumpLower: number;
+  supplementalLiftMode: SupplementalLiftMode;
+  /** BBB supplemental as fraction of supplemental TM — `null` means use Leader template % */
+  supplementalBbbPercentOverride: number | null;
+  /** Default assistance picks when today's main lift is bench or press */
+  assistancePresetUpper: AssistancePresetsByCategory;
+  /** Default assistance picks when today's main lift is squat or deadlift */
+  assistancePresetLower: AssistancePresetsByCategory;
+  /** Local device: last successful JSON backup (epoch ms), not synced. */
+  lastBackupAt: number | null;
 }
+
+/** Stored rows may include this until re-saved without migration fields. */
+export type StoredSettingsShape = SettingsRow & { units?: "lb" | "kg" };
 
 export interface ProgramRow {
   id: string;
@@ -23,6 +35,7 @@ export interface ProgramRow {
   leaderCyclesCompleted: number;
   anchorCyclesCompleted: number;
   pendingTmBump: boolean;
+  pendingTmRestartToLeader: boolean;
 }
 
 export interface SetLogRow {
@@ -42,6 +55,40 @@ export interface SupplementalLogRow {
   completedSets: boolean[];
 }
 
+/** One logged assistance set (add “Add set” once per set). */
+export interface AssistanceSetRow {
+  exerciseId: string;
+  reps: number;
+  /** Loaded weight in kg; null = bodyweight (no added load). */
+  weightKg: number | null;
+}
+
+/** Older saves: total sets × reps at BW */
+export interface AssistanceLegacyCompoundRow {
+  exerciseId: string;
+  sets: number;
+  reps: number;
+}
+
+export type AssistanceEntryStored =
+  | AssistanceSetRow
+  | AssistanceLegacyCompoundRow;
+
+export function isAssistanceSetRow(
+  e: AssistanceEntryStored,
+): e is AssistanceSetRow {
+  return Object.prototype.hasOwnProperty.call(e, "weightKg");
+}
+
+export function formatAssistanceEntry(e: AssistanceEntryStored): string {
+  if (isAssistanceSetRow(e)) {
+    const w =
+      e.weightKg == null ? "BW" : `${e.weightKg} kg`;
+    return `${e.reps} reps · ${w}`;
+  }
+  return `${e.sets}×${e.reps} · BW`;
+}
+
 export interface SessionRow {
   id?: number;
   createdAt: number;
@@ -53,7 +100,9 @@ export interface SessionRow {
   anchorTemplateId: string;
   mainSets: SetLogRow[];
   supplemental: SupplementalLogRow[];
+  /** Legacy free-text; optional notes alongside structured assistance */
   assistanceNotes: string;
+  assistanceEntries?: AssistanceEntryStored[];
 }
 
 export class WendlerDB extends Dexie {

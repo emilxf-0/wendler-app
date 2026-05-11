@@ -5,12 +5,14 @@ import type {
   TemplateDefinition,
   MainSetPrescription,
 } from "./types";
+import { LIFT_LABEL } from "./types";
 import {
   buildDeloadMainSets,
   buildMainSets,
-  firstMainWorkingPercent,
+  mainWorkingPercentAtStep,
 } from "./mainWork";
 import { roundWorkingWeight } from "./rounding";
+import { clampSupplementalTmFraction } from "./supplementalPercent";
 
 export interface SupplementalRow {
   label: string;
@@ -31,24 +33,41 @@ export interface WorkoutPrescription {
 }
 
 function supplementalRows(params: {
-  tm: number;
+  supplementalLift: LiftId;
+  supplementalTm: number;
   roundingIncrement: number;
   template: TemplateDefinition;
   microWeek: MicroWeek;
+  supplementalBbbPercentOverride: number | null;
 }): SupplementalRow[] {
-  const { tm, roundingIncrement, template, microWeek } = params;
+  const {
+    supplementalLift,
+    supplementalTm,
+    roundingIncrement,
+    template,
+    microWeek,
+    supplementalBbbPercentOverride,
+  } = params;
+  const tmLabel = LIFT_LABEL[supplementalLift];
   const spec = template.supplemental;
   if (spec.kind === "none") return [];
 
   if (spec.kind === "bbb") {
-    const fractionTm = spec.percentTm;
+    let fractionTm = spec.percentTm;
+    if (
+      supplementalBbbPercentOverride !== null &&
+      Number.isFinite(supplementalBbbPercentOverride)
+    ) {
+      fractionTm = clampSupplementalTmFraction(supplementalBbbPercentOverride);
+    }
     const prescribedWeight = roundWorkingWeight(
-      tm * fractionTm,
+      supplementalTm * fractionTm,
       roundingIncrement,
     );
+    const pct = Math.round(fractionTm * 100);
     return [
       {
-        label: "BBB supplemental (same lift)",
+        label: `BBB supplemental · ${tmLabel} TM · ${pct}%`,
         sets: spec.sets,
         reps: spec.reps,
         fractionTm,
@@ -57,14 +76,26 @@ function supplementalRows(params: {
     ];
   }
 
-  const fractionTm = firstMainWorkingPercent(template.mainWave, microWeek);
+  const fractionTm =
+    spec.kind === "wave_step_volume"
+      ? mainWorkingPercentAtStep(
+          template.mainWave,
+          microWeek,
+          spec.waveStep,
+        )
+      : mainWorkingPercentAtStep(
+          template.mainWave,
+          microWeek,
+          spec.percentTmFromMainIndex,
+        );
   const prescribedWeight = roundWorkingWeight(
-    tm * fractionTm,
+    supplementalTm * fractionTm,
     roundingIncrement,
   );
+  const pct = Math.round(fractionTm * 100);
   return [
     {
-      label: "FSL supplemental",
+      label: `FSL supplemental · ${tmLabel} TM · ${pct}%`,
       sets: spec.sets,
       reps: spec.reps,
       fractionTm,
@@ -86,9 +117,22 @@ export function buildWorkoutPrescription(params: {
   phase: Phase;
   microWeek: MicroWeek;
   tm: number;
+  /** Training max for supplemental work (may differ from main when using paired-lift mode). */
+  supplementalLift: LiftId;
+  supplementalTm: number;
   roundingIncrement: number;
+  supplementalBbbPercentOverride: number | null;
 }): WorkoutPrescription {
-  const { lift, template, phase, microWeek, tm, roundingIncrement } = params;
+  const {
+    lift,
+    template,
+    phase,
+    microWeek,
+    supplementalLift,
+    supplementalTm,
+    roundingIncrement,
+    supplementalBbbPercentOverride,
+  } = params;
 
   const phaseLabel =
     phase === "leader"
@@ -109,7 +153,14 @@ export function buildWorkoutPrescription(params: {
   const supplemental =
     phase === "deload"
       ? []
-      : supplementalRows({ tm, roundingIncrement, template, microWeek });
+      : supplementalRows({
+          supplementalLift,
+          supplementalTm,
+          roundingIncrement,
+          template,
+          microWeek,
+          supplementalBbbPercentOverride,
+        });
 
   return {
     lift,

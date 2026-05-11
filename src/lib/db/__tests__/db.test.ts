@@ -30,6 +30,7 @@ describe("IndexedDB persistence", () => {
       leaderCyclesCompleted: fresh.leaderCyclesCompleted,
       anchorCyclesCompleted: fresh.anchorCyclesCompleted,
       pendingTmBump: fresh.pendingTmBump,
+      pendingTmRestartToLeader: fresh.pendingTmRestartToLeader,
     });
 
     const loaded = await loadProgram();

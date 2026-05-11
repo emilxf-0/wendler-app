@@ -93,3 +93,11 @@ export function firstMainWorkingPercent(
 ): number {
   return percentsForVariant(variant, microWeek)[0];
 }
+
+export function mainWorkingPercentAtStep(
+  variant: MainWaveVariant,
+  microWeek: MicroWeek,
+  step: 0 | 1 | 2,
+): number {
+  return percentsForVariant(variant, microWeek)[step];
+}

@@ -1,4 +1,4 @@
-import type { LiftId } from "./types";
+import { LIFTS, type LiftId } from "./types";
 
 /** Wendler's common e1RM estimate from the Forever book. */
 export function estimateOneRepMax(weight: number, reps: number): number {
@@ -14,13 +14,24 @@ export function suggestedTrainingMax(
   return estimatedOneRepMax * tmFraction;
 }
 
+/** Non-negative finite bump (kg); invalid values fall back so we never write NaN TMs. */
+export function safeTmBumpKg(value: unknown, fallback: number): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return n;
+}
+
 export function applyTmBumps(
   tms: Record<LiftId, number>,
   bumps: Record<LiftId, number>,
 ): Record<LiftId, number> {
-  const next = { ...tms };
-  for (const lift of Object.keys(bumps) as LiftId[]) {
-    next[lift] = Math.max(0, (next[lift] ?? 0) + (bumps[lift] ?? 0));
+  const next: Record<LiftId, number> = { ...tms };
+  for (const lift of LIFTS) {
+    const base = next[lift];
+    const d = bumps[lift];
+    const b = Number.isFinite(base) ? base : 0;
+    const add = Number.isFinite(d) ? d : 0;
+    next[lift] = Math.max(0, b + add);
   }
   return next;
 }

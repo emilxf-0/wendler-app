@@ -11,7 +11,12 @@ import {
   workingWeightForSet,
   type WorkoutPrescription,
 } from "@/lib/domain/prescription";
-import { liftForSession } from "@/lib/domain/schedule";
+import { completedSessionLogsFromPrescription } from "@/lib/domain/sessionLogFromPrescription";
+import {
+  liftForSession,
+  mainLiftIsUpperBody,
+  pairedBarbellLift,
+} from "@/lib/domain/schedule";
 import type { ActiveProgramSnapshot, LiftId } from "@/lib/domain/types";
 import { LIFT_LABEL } from "@/lib/domain/types";
 import {
@@ -20,9 +25,18 @@ import {
   loadSettings,
   saveProgram,
 } from "@/lib/db";
-import type { ProgramRow } from "@/lib/db/schema";
-import type { SettingsRow } from "@/lib/db/schema";
-import type { SetLogRow, SupplementalLogRow } from "@/lib/db/schema";
+import type { AssistancePresetsByCategory } from "@/lib/domain/assistanceCatalog";
+import type {
+  ProgramRow,
+  SetLogRow,
+  SettingsRow,
+  SupplementalLogRow,
+} from "@/lib/db/schema";
+import {
+  AssistanceSection,
+  stripAssistanceLines,
+  type AssistanceLine,
+} from "@/components/AssistanceSection";
 
 export default function TodayPage() {
   const [program, setProgram] = useState<ProgramRow | null>(null);
@@ -48,8 +62,20 @@ export default function TodayPage() {
       })
     : null;
 
+  const supplementalLift = useMemo(() => {
+    if (!lift || !settings) return null;
+    return settings.supplementalLiftMode === "paired"
+      ? pairedBarbellLift(lift)
+      : lift;
+  }, [lift, settings]);
+
+  const supplementalTm =
+    supplementalLift != null && settings
+      ? (settings.trainingMaxes[supplementalLift] ?? 0)
+      : 0;
+
   const prescription = useMemo(() => {
-    if (!snapshot || !lift || !settings) return null;
+    if (!snapshot || !lift || !settings || !supplementalLift) return null;
     const tm = settings.trainingMaxes[lift] ?? 0;
     const template = effectiveTemplate(snapshot);
     return buildWorkoutPrescription({
@@ -58,13 +84,24 @@ export default function TodayPage() {
       phase: snapshot.phase,
       microWeek: snapshot.microWeek,
       tm,
+      supplementalLift,
+      supplementalTm: settings.trainingMaxes[supplementalLift] ?? 0,
       roundingIncrement: settings.roundingIncrement,
+      supplementalBbbPercentOverride: settings.supplementalBbbPercentOverride,
     });
-  }, [snapshot, lift, settings]);
+  }, [snapshot, lift, settings, supplementalLift]);
+
+  const assistancePresetsByCategory: AssistancePresetsByCategory =
+    useMemo(() => {
+      if (!lift || !settings) return {};
+      return mainLiftIsUpperBody(lift)
+        ? settings.assistancePresetUpper
+        : settings.assistancePresetLower;
+    }, [lift, settings]);
 
   if (!program || !settings || !snapshot) {
     return (
-      <p className="text-sm text-zinc-400" aria-live="polite">
+      <p className="text-base text-zinc-400" aria-live="polite">
         Loading…
       </p>
     );
@@ -72,13 +109,13 @@ export default function TodayPage() {
 
   if (snapshot.pendingTmBump) {
     return (
-      <div className="space-y-4 rounded-xl border border-amber-700/50 bg-amber-950/40 p-6">
-        <h1 className="text-xl font-semibold text-amber-50">
-          TM bump pending
+      <div className="space-y-4 rounded-2xl border border-amber-700/50 bg-amber-950/40 p-6 sm:p-8">
+        <h1 className="text-2xl font-semibold text-amber-50 sm:text-3xl">
+          Training max review pending
         </h1>
-        <p className="text-sm text-amber-100/80">
-          Finish updating training maxes from your Anchor block, then reset on the
-          Dashboard before logging another primary workout.
+        <p className="text-base leading-relaxed text-amber-100/85 sm:text-lg">
+          You finished a 3-week wave. Use the Dashboard to apply or skip bumps
+          (and adjust TMs in Setup); then logging can continue.
         </p>
       </div>
     );
@@ -86,7 +123,7 @@ export default function TodayPage() {
 
   if (!lift || !prescription) {
     return (
-      <p className="text-sm text-red-400">
+      <p className="text-base text-red-400">
         Unable to resolve today&apos;s lift — reset Program frequency or progress.
       </p>
     );
@@ -103,6 +140,8 @@ export default function TodayPage() {
       snapshot={snapshot}
       lift={lift}
       prescription={prescription}
+      supplementalTm={supplementalTm}
+      assistancePresetsByCategory={assistancePresetsByCategory}
     />
   );
 }
@@ -114,6 +153,8 @@ function TodayLogger({
   snapshot,
   lift,
   prescription,
+  supplementalTm,
+  assistancePresetsByCategory,
 }: {
   program: ProgramRow;
   setProgram: (p: ProgramRow) => void;
@@ -121,6 +162,8 @@ function TodayLogger({
   snapshot: ActiveProgramSnapshot;
   lift: LiftId;
   prescription: WorkoutPrescription;
+  supplementalTm: number;
+  assistancePresetsByCategory: AssistancePresetsByCategory;
 }) {
   const [mainChecks, setMainChecks] = useState(
     () => prescription.mainSets.map(() => false),
@@ -130,7 +173,8 @@ function TodayLogger({
       Array.from({ length: s.sets }, () => false),
     ),
   );
-  const [assistance, setAssistance] = useState("");
+  const [assistanceNotes, setAssistanceNotes] = useState("");
+  const [assistanceLines, setAssistanceLines] = useState<AssistanceLine[]>([]);
   const [busy, setBusy] = useState(false);
 
   const tm = settings.trainingMaxes[lift] ?? 0;
@@ -139,7 +183,7 @@ function TodayLogger({
   async function handleComplete() {
     if (snapshot.pendingTmBump) {
       window.alert(
-        "Resolve the pending TM bump on the Dashboard before advancing workouts.",
+        "Clear the TM review card on the Dashboard before advancing workouts.",
       );
       return;
     }
@@ -167,23 +211,31 @@ function TodayLogger({
 
     setBusy(true);
     try {
-      const mainLogs: SetLogRow[] = prescription.mainSets.map((set, idx) => ({
-        label: set.label,
-        prescribedWeight: workingWeightForSet(tm, set.percentTm, increment),
-        repsTarget: set.repsTarget,
+      const { mainSets: allDoneMain, supplemental: allDoneSupp } =
+        completedSessionLogsFromPrescription({
+          prescription,
+          tm,
+          roundingIncrement: increment,
+        });
+
+      const mainLogs: SetLogRow[] = allDoneMain.map((row, idx) => ({
+        ...row,
         completed: Boolean(mainDone[idx]),
       }));
 
-      const supplementalLogs: SupplementalLogRow[] =
-        prescription.supplemental.map((supp, supIdx) => ({
-          label: supp.label,
-          sets: supp.sets,
-          reps: supp.reps,
-          prescribedWeight: supp.prescribedWeight,
-          completedSets:
+      const supplementalLogs: SupplementalLogRow[] = allDoneSupp.map(
+        (row, supIdx) => {
+          const chosen =
             suppChecks[supIdx] ??
-            Array.from({ length: supp.sets }, () => false),
-        }));
+            Array.from({ length: row.sets }, () => false);
+          return {
+            ...row,
+            completedSets: chosen,
+          };
+        },
+      );
+
+      const assistanceEntries = stripAssistanceLines(assistanceLines);
 
       await addSession({
         createdAt: Date.now(),
@@ -195,7 +247,10 @@ function TodayLogger({
         anchorTemplateId: snapshot.anchorTemplateId,
         mainSets: mainLogs,
         supplemental: supplementalLogs,
-        assistanceNotes: assistance,
+        assistanceNotes: assistanceNotes.trim(),
+        ...(assistanceEntries.length > 0
+          ? { assistanceEntries }
+          : {}),
       });
 
       const { next, milestones } = advanceAfterCompletedWorkout(snapshot);
@@ -214,21 +269,21 @@ function TodayLogger({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       <header className="space-y-2">
-        <p className="text-xs uppercase tracking-wide text-emerald-400">
+        <p className="text-sm font-medium uppercase tracking-wide text-emerald-400 sm:text-base">
           {prescription.phaseLabel}
         </p>
-        <h1 className="text-3xl font-semibold text-white">
+        <h1 className="text-4xl font-semibold text-white sm:text-5xl">
           {LIFT_LABEL[lift]}
         </h1>
-        <p className="text-sm text-zinc-400">
+        <p className="text-base text-zinc-400 sm:text-lg">
           TM ·{" "}
           <span className="font-medium text-zinc-100">
-            {tm ? `${tm} ${settings.units}` : `set TM in Setup`}
+            {tm ? `${tm} kg` : `set TM in Setup`}
           </span>
         </p>
-        <p className="text-xs text-zinc-500">
+        <p className="text-sm leading-relaxed text-zinc-500 sm:text-base">
           Session slot {snapshot.workoutIndexInMicroWeek + 1} /{" "}
           {snapshot.frequency} this micro-wave week · Phase{" "}
           {snapshot.phase === "leader"
@@ -239,20 +294,20 @@ function TodayLogger({
         </p>
       </header>
 
-      <section className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
-        <h2 className="font-medium text-white">Main work</h2>
-        <div className="space-y-2">
+      <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 sm:p-6">
+        <h2 className="text-lg font-medium text-white sm:text-xl">Main work</h2>
+        <div className="space-y-3">
           {prescription.mainSets.map((set, idx) => {
             const weight = workingWeightForSet(tm, set.percentTm, increment);
             const checked = mainChecks[idx] ?? false;
             return (
               <label
                 key={`${set.label}-${idx}`}
-                className="flex cursor-pointer items-start gap-3 rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-3"
+                className="flex cursor-pointer items-start gap-4 rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-4"
               >
                 <input
                   type="checkbox"
-                  className="mt-1 h-4 w-4 accent-emerald-500"
+                  className="touch-checkbox mt-1 accent-emerald-500"
                   checked={checked}
                   onChange={(e) =>
                     setMainChecks((prev) => {
@@ -262,14 +317,16 @@ function TodayLogger({
                     })
                   }
                 />
-                <div className="flex-1">
+                <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-medium text-white">{set.label}</span>
-                    <span className="text-sm text-emerald-300">
-                      {tm ? `${weight} ${settings.units}` : "—"}
+                    <span className="text-lg font-medium text-white">
+                      {set.label}
+                    </span>
+                    <span className="text-base font-medium text-emerald-300 sm:text-lg">
+                      {tm ? `${weight} kg` : "—"}
                     </span>
                   </div>
-                  <p className="text-xs text-zinc-500">
+                  <p className="mt-1 text-sm text-zinc-500 sm:text-base">
                     {set.repsTarget === "amrap"
                       ? "Leave reps in the tank unless it's test week."
                       : typeof set.repsTarget === "number"
@@ -284,26 +341,45 @@ function TodayLogger({
       </section>
 
       {prescription.supplemental.length ? (
-        <section className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
-          <h2 className="font-medium text-white">Supplemental</h2>
+        <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <h2 className="text-lg font-medium text-white sm:text-xl">
+              Supplemental
+            </h2>
+            <button
+              type="button"
+              className="min-h-11 shrink-0 rounded-xl border border-zinc-600 bg-zinc-800 px-4 py-2 text-base font-medium text-zinc-100 hover:border-zinc-500 hover:bg-zinc-700 active:bg-zinc-800"
+              onClick={() =>
+                setSuppChecks(
+                  prescription.supplemental.map((block) =>
+                    Array.from({ length: block.sets }, () => true),
+                  ),
+                )
+              }
+            >
+              Mark all sets done
+            </button>
+          </div>
           {prescription.supplemental.map((block, blockIdx) => (
-            <div key={block.label} className="space-y-2">
-              <div className="flex flex-wrap justify-between gap-2 text-sm">
-                <span className="text-zinc-300">{block.label}</span>
-                <span className="text-emerald-300">
-                  {tm ? `${block.prescribedWeight} ${settings.units}` : "—"} ×{" "}
-                  {block.reps} × {block.sets} sets
+            <div key={block.label} className="space-y-3">
+              <div className="flex flex-wrap justify-between gap-3 text-base sm:text-lg">
+                <span className="font-medium text-zinc-300">{block.label}</span>
+                <span className="font-medium text-emerald-300">
+                  {supplementalTm
+                    ? `${block.prescribedWeight} kg · ${Math.round(block.fractionTm * 100)}% TM`
+                    : "—"}{" "}
+                  × {block.reps} × {block.sets} sets
                 </span>
               </div>
-              <div className="grid gap-2 sm:grid-cols-5">
+              <div className="grid gap-2 sm:grid-cols-4 md:grid-cols-5">
                 {Array.from({ length: block.sets }).map((_, setIdx) => (
                   <label
                     key={`${block.label}-${setIdx}`}
-                    className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/60 px-2 py-2 text-xs text-zinc-300"
+                    className="flex min-h-11 items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2.5 text-base text-zinc-300 sm:justify-center sm:gap-2"
                   >
                     <input
                       type="checkbox"
-                      className="h-4 w-4 accent-emerald-500"
+                      className="touch-checkbox accent-emerald-500"
                       checked={suppChecks[blockIdx]?.[setIdx] ?? false}
                       onChange={(e) =>
                         setSuppChecks((prev) => {
@@ -328,21 +404,19 @@ function TodayLogger({
         </section>
       ) : null}
 
-      <section className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
-        <h2 className="font-medium text-white">Assistance</h2>
-        <p className="text-sm text-zinc-400">{prescription.assistanceHint}</p>
-        <textarea
-          className="min-h-[96px] w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-white"
-          placeholder="Push / Pull / Single-leg·Core notes…"
-          value={assistance}
-          onChange={(e) => setAssistance(e.target.value)}
-        />
-      </section>
+      <AssistanceSection
+        hint={prescription.assistanceHint}
+        notes={assistanceNotes}
+        onNotesChange={setAssistanceNotes}
+        lines={assistanceLines}
+        onLinesChange={setAssistanceLines}
+        presetsByCategory={assistancePresetsByCategory}
+      />
 
       <button
         type="button"
         disabled={busy}
-        className="w-full rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-black hover:bg-emerald-500 disabled:opacity-50"
+        className="min-h-14 w-full rounded-2xl bg-emerald-600 py-4 text-lg font-semibold text-black hover:bg-emerald-500 disabled:opacity-50 active:bg-emerald-600"
         onClick={() => void handleComplete()}
       >
         Complete workout

@@ -4,6 +4,8 @@
   color-scheme: dark;
   --background: #09090b;
   --foreground: #fafafa;
+  /* Comfortable mobile tapping / reading */
+  --touch-target: 2.75rem;
 }
 
 @theme inline {
@@ -13,7 +15,36 @@
   --font-mono: var(--font-geist-mono);
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (max-width: 639px) {
+  html {
+    font-size: 112.5%;
+  }
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
+}
+
+/* Shared control sizing for forms (Tailwind stacks with explicit classes) */
+.touch-control {
+  min-height: var(--touch-target);
+  padding-inline: 0.875rem;
+  padding-block: 0.625rem;
+  font-size: 1rem;
+}
+
+.touch-checkbox {
+  min-height: 1.25rem;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  width: 1.25rem;
+}
+
+.slider-touch {
+  min-block-size: var(--touch-target);
 }

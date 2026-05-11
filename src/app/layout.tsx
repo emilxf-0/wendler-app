@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AppShell } from "@/components/AppShell";
 import "./globals.css";
@@ -18,6 +18,12 @@ export const metadata: Metadata = {
   description:
     "Leader and Anchor templates, training max tracking, and workout logs.",
   appleWebApp: { capable: true, title: "531 Forever" },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#09090b",
 };
 
 export default function RootLayout({
