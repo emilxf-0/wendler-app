@@ -6,6 +6,7 @@ import {
   SUPPLEMENTAL_TM_FRACTION_MAX,
   SUPPLEMENTAL_TM_FRACTION_MIN,
 } from "@/lib/domain/supplementalPercent";
+import { roundWorkingWeight } from "@/lib/domain/rounding";
 import {
   estimateOneRepMax,
   suggestedTrainingMax,
@@ -529,9 +530,10 @@ function TmEstimator({
 
   const suggestion = useMemo(() => {
     const e1 = estimateOneRepMax(weight, reps);
-    const tm = suggestedTrainingMax(e1, fraction);
+    const rawTm = suggestedTrainingMax(e1, fraction);
+    const tm = roundWorkingWeight(rawTm, row.roundingIncrement);
     return { e1, tm };
-  }, [weight, reps, fraction]);
+  }, [weight, reps, fraction, row.roundingIncrement]);
 
   return (
     <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 sm:p-6">
@@ -543,7 +545,9 @@ function TmEstimator({
         <code className="rounded-lg bg-zinc-950 px-2 py-1 text-[0.9em] text-zinc-200">
           weight × reps × 0.0333 + weight
         </code>{" "}
-        (kg), then scales by your chosen TM fraction (often 0.85–0.90).
+        (kg), then scales by your chosen TM fraction (often 0.85–0.90). The
+        suggested TM is rounded to the nearest step from your Rounding setting
+        above.
       </p>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-2 text-base">
