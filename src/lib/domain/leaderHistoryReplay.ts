@@ -46,13 +46,31 @@ function applyStandardReplayBump(
   );
 }
 
+/**
+ * Sessions are ordered oldest → newest. The last session uses `finalSessionTimestampMs`;
+ * each prior session is 2 calendar days earlier (every other day).
+ */
+export function assignSessionTimestampsEveryOtherDayFromFinal(
+  sessions: Omit<SessionRow, "id">[],
+  finalSessionTimestampMs: number,
+): void {
+  const n = sessions.length;
+  if (n === 0) return;
+  for (let i = 0; i < n; i++) {
+    const row = sessions[i];
+    if (!row) continue;
+    const d = new Date(finalSessionTimestampMs);
+    d.setDate(d.getDate() - 2 * (n - 1 - i));
+    row.createdAt = d.getTime();
+  }
+}
+
 function buildOneSession(params: {
   snapshot: ActiveProgramSnapshot;
   settings: ReplaySettings;
   trainingMaxes: Record<LiftId, number>;
-  createdAt: number;
 }): Omit<SessionRow, "id"> | null {
-  const { snapshot, settings, trainingMaxes, createdAt } = params;
+  const { snapshot, settings, trainingMaxes } = params;
   const lift = liftForSession(snapshot.workoutIndexInMicroWeek);
   if (!lift) return null;
 
@@ -83,7 +101,7 @@ function buildOneSession(params: {
   });
 
   return {
-    createdAt,
+    createdAt: 0,
     lift,
     phase: snapshot.phase,
     microWeek: snapshot.microWeek,
@@ -100,6 +118,9 @@ function buildOneSession(params: {
  * Replay Leader waves from week 1. Uses `startingTrainingMaxes` for the first session(s);
  * whenever the program would show a TM review (`pendingTmBump`), applies Setup-style bumps
  * (`tmBumpUpper` / `tmBumpLower`) before the next session — same rhythm as the Dashboard.
+ *
+ * Timestamps: `finalSessionTimestampMs` is the **most recent** synthetic workout. Earlier
+ * sessions are assigned every **other calendar day** backward (same clock time when possible).
  */
 export function generateCompletedSessionsThroughLeaderCycles(params: {
   startProgram: ActiveProgramSnapshot;
@@ -107,8 +128,7 @@ export function generateCompletedSessionsThroughLeaderCycles(params: {
   startingTrainingMaxes: Record<LiftId, number>;
   leaderWavesToSimulate: number;
   includeDeloadInHistory: boolean;
-  baseTimestampMs: number;
-  sessionSpacingMs?: number;
+  finalSessionTimestampMs: number;
 }): LeaderHistoryReplayResult {
   const {
     startProgram,
@@ -116,8 +136,7 @@ export function generateCompletedSessionsThroughLeaderCycles(params: {
     startingTrainingMaxes,
     leaderWavesToSimulate,
     includeDeloadInHistory,
-    baseTimestampMs,
-    sessionSpacingMs = 60_000,
+    finalSessionTimestampMs,
   } = params;
 
   if (startProgram.phase !== "leader") {
@@ -141,7 +160,6 @@ export function generateCompletedSessionsThroughLeaderCycles(params: {
 
   let snap: ActiveProgramSnapshot = { ...startProgram };
   const sessions: Omit<SessionRow, "id">[] = [];
-  let tsIndex = 0;
   let leaderWavesDone = 0;
 
   while (leaderWavesDone < waves && snap.phase === "leader") {
@@ -153,14 +171,10 @@ export function generateCompletedSessionsThroughLeaderCycles(params: {
       break;
     }
 
-    const createdAt = baseTimestampMs + tsIndex * sessionSpacingMs;
-    tsIndex += 1;
-
     const row = buildOneSession({
       snapshot: snap,
       settings,
       trainingMaxes: tms,
-      createdAt,
     });
     if (!row) break;
     sessions.push(row);
@@ -189,18 +203,19 @@ export function generateCompletedSessionsThroughLeaderCycles(params: {
     while (snap.phase === "deload" && guard < maxDeload) {
       guard += 1;
       if (snap.pendingTmBump) {
-        tms = applyStandardReplayBump(tms, settings);
+        // Entering deload from Leader leaves pendingTmBump set; do not apply a
+        // synthetic bump here so users can match one real Dashboard bump after
+        // backfill (deload prescriptions use the same TMs as the last Leader week).
+        if (guard !== 1) {
+          tms = applyStandardReplayBump(tms, settings);
+        }
         snap = clearTmBumpHold(snap);
       }
-
-      const createdAt = baseTimestampMs + tsIndex * sessionSpacingMs;
-      tsIndex += 1;
 
       const row = buildOneSession({
         snapshot: snap,
         settings,
         trainingMaxes: tms,
-        createdAt,
       });
       if (!row) break;
       sessions.push(row);
@@ -208,7 +223,16 @@ export function generateCompletedSessionsThroughLeaderCycles(params: {
       const { next } = advanceAfterCompletedWorkout(snap);
       snap = next;
     }
+
+    if (snap.phase === "anchor") {
+      tms = applyStandardReplayBump(tms, settings);
+    }
   }
+
+  assignSessionTimestampsEveryOtherDayFromFinal(
+    sessions,
+    finalSessionTimestampMs,
+  );
 
   return {
     sessions,

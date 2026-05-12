@@ -295,7 +295,7 @@ function BackfillSection({
 
   const [replayWavesText, setReplayWavesText] = useState("2");
   const [replayIncludeDeload, setReplayIncludeDeload] = useState(false);
-  const [replayStartLocal, setReplayStartLocal] = useState(() => {
+  const [replayFinalLocal, setReplayFinalLocal] = useState(() => {
     const d = new Date();
     d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
     return d.toISOString().slice(0, 16);
@@ -333,9 +333,9 @@ function BackfillSection({
       window.alert("Enter at least 1 Leader wave to simulate.");
       return;
     }
-    const startMs = new Date(replayStartLocal).getTime();
-    if (!Number.isFinite(startMs)) {
-      window.alert("Pick a valid start date / time.");
+    const finalMs = new Date(replayFinalLocal).getTime();
+    if (!Number.isFinite(finalMs)) {
+      window.alert("Pick a valid final session date / time.");
       return;
     }
     const badLift = LIFTS.find((lift) => (replayStartTms[lift] ?? 0) <= 0);
@@ -346,9 +346,9 @@ function BackfillSection({
       return;
     }
     const settings = await loadSettings();
-    const minSessions = waves * 3 * 4;
+    const minSessions = waves * 3 * row.frequency;
     const okGo = window.confirm(
-      `Add synthetic Leader history (${minSessions} sessions if you complete ${waves} full wave(s) before deload), then move your program to match? First session uses the “start” TMs you entered; after each 3-week wave the replay applies your Setup TM bumps (upper / lower, kg) like the Dashboard. Download a backup on History first (recommended).`,
+      `Add synthetic Leader history (${minSessions} sessions if you complete ${waves} full wave(s) before deload), then move your program to match? Sessions are dated every other day backward from your final session time. First session uses the “start” TMs you entered; after each 3-week wave the replay applies your Setup TM bumps (upper / lower, kg) like the Dashboard. Download a backup on History first (recommended).`,
     );
     if (!okGo) return;
 
@@ -357,6 +357,7 @@ function BackfillSection({
       const startProgram = defaultActiveProgram({
         leaderTemplateId: row.leaderTemplateId,
         anchorTemplateId: row.anchorTemplateId,
+        frequency: row.frequency,
         leaderCyclesTarget: row.leaderCyclesTarget,
         anchorCyclesTarget: row.anchorCyclesTarget,
         bbbLeaderMainTopSet: row.bbbLeaderMainTopSet,
@@ -375,7 +376,7 @@ function BackfillSection({
           startingTrainingMaxes: replayStartTms,
           leaderWavesToSimulate: waves,
           includeDeloadInHistory: replayIncludeDeload,
-          baseTimestampMs: startMs,
+          finalSessionTimestampMs: finalMs,
         });
 
       if (sessions.length === 0) {
@@ -678,13 +679,16 @@ function BackfillSection({
           targets. Enter training maxes as they were at the{" "}
           <span className="font-medium text-amber-100/95">start</span> of this
           replay; after each finished 3-week wave the generator applies bumps
-          from Setup (same upper / lower kg as the Dashboard). Often fewer than{" "}
+          from Setup (same upper / lower kg as the Dashboard). Pick the date of
+          your <span className="font-medium text-amber-100/95">last</span>{" "}
+          synthetic session; earlier ones are spaced every other calendar day
+          backward. Often fewer than{" "}
           {Math.max(
             1,
             Math.floor(optionalFiniteNumberFromInput(replayWavesText) ?? 2),
           )}
-          ×3×4 sessions if
-          “Leader cycles before deload” ends your block early (7th week).{" "}
+          ×3×{row.frequency} sessions if “Leader cycles before deload” ends your
+          block early (7th week).{" "}
           <Link
             href="/history"
             className="font-medium text-emerald-400 underline-offset-2 hover:underline"
@@ -762,24 +766,32 @@ function BackfillSection({
             />
           </label>
           <label className="flex flex-col gap-2 text-base">
-            <span className="text-zinc-400">First session starts at</span>
+            <span className="text-zinc-400">Final session date &amp; time</span>
             <input
               type="datetime-local"
               className="touch-control rounded-xl border border-zinc-700 bg-zinc-950 text-white"
-              value={replayStartLocal}
-              onChange={(e) => setReplayStartLocal(e.target.value)}
+              value={replayFinalLocal}
+              onChange={(e) => setReplayFinalLocal(e.target.value)}
             />
           </label>
         </div>
-        <label className="flex cursor-pointer items-center gap-2 text-base text-zinc-300">
+        <label className="flex cursor-pointer items-start gap-2 text-base text-zinc-300">
           <input
             type="checkbox"
-            className="touch-checkbox accent-amber-500"
+            className="touch-checkbox mt-1 accent-amber-500"
             checked={replayIncludeDeload}
             onChange={(e) => setReplayIncludeDeload(e.target.checked)}
           />
-          If replay ends in Deload, log 7th-week sessions too (then opens Anchor
-          week 1)
+          <span>
+            If replay ends in Deload, log 7th-week sessions too (then opens
+            Anchor week 1)
+            <span className="mt-1 block text-sm font-normal text-zinc-500">
+              Deload sessions use the same TMs as your last Leader week (no
+              bump before deload). After the replay finishes deload, one Setup
+              bump is applied so Anchor and “end-of-replay” TMs match starting
+              Anchor work.
+            </span>
+          </span>
         </label>
         <label className="flex cursor-pointer items-center gap-2 text-base text-zinc-300">
           <input

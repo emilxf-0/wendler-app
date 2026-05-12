@@ -57,7 +57,7 @@ describe("generateCompletedSessionsThroughLeaderCycles", () => {
       startingTrainingMaxes: { ...START_TMS },
       leaderWavesToSimulate: 1,
       includeDeloadInHistory: false,
-      baseTimestampMs: 1_700_000_000_000,
+      finalSessionTimestampMs: 1_700_000_000_000,
     });
     expect(res.sessions).toEqual([]);
     expect(res.finalProgram).toEqual(p);
@@ -72,7 +72,7 @@ describe("generateCompletedSessionsThroughLeaderCycles", () => {
       startingTrainingMaxes: { ...START_TMS },
       leaderWavesToSimulate: 0,
       includeDeloadInHistory: false,
-      baseTimestampMs: 0,
+      finalSessionTimestampMs: 0,
     });
     expect(res.sessions).toEqual([]);
     expect(res.finalTrainingMaxes).toEqual(START_TMS);
@@ -86,7 +86,7 @@ describe("generateCompletedSessionsThroughLeaderCycles", () => {
       startingTrainingMaxes: { ...START_TMS },
       leaderWavesToSimulate: 1,
       includeDeloadInHistory: false,
-      baseTimestampMs: 1_000,
+      finalSessionTimestampMs: 1_000,
     });
     expect(res.sessions.length).toBe(12);
     expect(res.sessions.every((s) => s.phase === "leader")).toBe(true);
@@ -104,7 +104,7 @@ describe("generateCompletedSessionsThroughLeaderCycles", () => {
       startingTrainingMaxes: { ...START_TMS },
       leaderWavesToSimulate: 1,
       includeDeloadInHistory: false,
-      baseTimestampMs: 1_000,
+      finalSessionTimestampMs: 1_000,
     });
     expect(res.sessions.length).toBe(12);
     expect(res.finalProgram.phase).toBe("deload");
@@ -120,7 +120,7 @@ describe("generateCompletedSessionsThroughLeaderCycles", () => {
       startingTrainingMaxes: { ...START_TMS },
       leaderWavesToSimulate: 1,
       includeDeloadInHistory: true,
-      baseTimestampMs: 1_000,
+      finalSessionTimestampMs: 1_000,
     });
     expect(res.sessions.length).toBe(12 + 4);
     const deloadCount = res.sessions.filter((s) => s.phase === "deload").length;
@@ -129,6 +129,8 @@ describe("generateCompletedSessionsThroughLeaderCycles", () => {
     expect(res.finalProgram.microWeek).toBe(1);
     expect(res.finalTrainingMaxes.squat).toBe(105);
     expect(res.finalTrainingMaxes.bench).toBe(82.5);
+    expect(res.finalTrainingMaxes.deadlift).toBe(125);
+    expect(res.finalTrainingMaxes.press).toBe(52.5);
   });
 
   it("stops at deload when more waves requested than fit before 7th week (target 1, waves 2)", () => {
@@ -139,7 +141,7 @@ describe("generateCompletedSessionsThroughLeaderCycles", () => {
       startingTrainingMaxes: { ...START_TMS },
       leaderWavesToSimulate: 2,
       includeDeloadInHistory: false,
-      baseTimestampMs: 1_000,
+      finalSessionTimestampMs: 1_000,
     });
     expect(res.sessions.length).toBe(12);
     expect(res.finalProgram.phase).toBe("deload");
@@ -154,7 +156,7 @@ describe("generateCompletedSessionsThroughLeaderCycles", () => {
       startingTrainingMaxes: { ...START_TMS },
       leaderWavesToSimulate: 2,
       includeDeloadInHistory: false,
-      baseTimestampMs: 1_000,
+      finalSessionTimestampMs: 1_000,
     });
     expect(res.sessions.length).toBe(24);
     expect(res.finalProgram.phase).toBe("leader");
@@ -171,12 +173,34 @@ describe("generateCompletedSessionsThroughLeaderCycles", () => {
       startingTrainingMaxes: { ...START_TMS },
       leaderWavesToSimulate: 2,
       includeDeloadInHistory: false,
-      baseTimestampMs: 1_000,
+      finalSessionTimestampMs: 1_000,
     });
     expect(res.sessions[0].lift).toBe("squat");
     expect(res.sessions[12].lift).toBe("squat");
     const w0 = res.sessions[0].mainSets[0]?.prescribedWeight ?? 0;
     const w12 = res.sessions[12].mainSets[0]?.prescribedWeight ?? 0;
     expect(w12).toBeGreaterThan(w0);
+  });
+
+  it("spaces session dates every other calendar day backward from final", () => {
+    const finalMs = new Date(2026, 4, 30, 9, 15).getTime();
+    const p = baseProgram({ leaderCyclesTarget: 99 });
+    const res = generateCompletedSessionsThroughLeaderCycles({
+      startProgram: p,
+      settings: mockReplaySettings(),
+      startingTrainingMaxes: { ...START_TMS },
+      leaderWavesToSimulate: 1,
+      includeDeloadInHistory: false,
+      finalSessionTimestampMs: finalMs,
+    });
+    const n = res.sessions.length;
+    expect(n).toBe(12);
+    expect(res.sessions[n - 1]!.createdAt).toBe(finalMs);
+    const expectedFirst = new Date(finalMs);
+    expectedFirst.setDate(expectedFirst.getDate() - 2 * (n - 1));
+    expect(res.sessions[0]!.createdAt).toBe(expectedFirst.getTime());
+    const mid = new Date(finalMs);
+    mid.setDate(mid.getDate() - 2 * (n - 1 - 6));
+    expect(res.sessions[6]!.createdAt).toBe(mid.getTime());
   });
 });
