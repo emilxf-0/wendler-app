@@ -308,6 +308,29 @@ export default function HistoryPage() {
                 </div>
               </div>
               <div className="mt-4 space-y-2 text-base text-zinc-400 sm:text-lg">
+                {session.warmupSets?.length ? (
+                  <>
+                    <div className="font-semibold text-zinc-200">Warmup</div>
+                    <ul className="space-y-2">
+                      {session.warmupSets.map((set) => (
+                        <li
+                          key={`warmup-${set.label}`}
+                          className="flex flex-wrap justify-between gap-2 leading-snug"
+                        >
+                          <span>{set.label}</span>
+                          <span className="shrink-0">
+                            {set.prescribedWeight} kg ·{" "}
+                            {set.completed ? (
+                              <span className="text-emerald-400">done</span>
+                            ) : (
+                              <span className="text-amber-400">skipped</span>
+                            )}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
                 <div className="font-semibold text-zinc-200">Main work</div>
                 <ul className="space-y-2">
                   {session.mainSets.map((set) => (

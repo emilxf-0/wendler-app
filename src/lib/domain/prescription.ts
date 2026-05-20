@@ -11,6 +11,7 @@ import { LIFT_LABEL } from "./types";
 import {
   buildDeloadMainSets,
   buildMainSets,
+  buildWarmupSets,
   mainWorkingPercentAtStep,
 } from "./mainWork";
 import { roundWorkingWeight } from "./rounding";
@@ -29,6 +30,7 @@ export interface WorkoutPrescription {
   lift: LiftId;
   phaseLabel: string;
   microWeek: number;
+  warmupSets: MainSetPrescription[];
   mainSets: MainSetPrescription[];
   supplemental: SupplementalRow[];
   assistanceHint: string;
@@ -171,6 +173,8 @@ export function buildWorkoutPrescription(params: {
           }),
         });
 
+  const warmupSets = phase === "deload" ? [] : buildWarmupSets();
+
   const supplemental =
     phase === "deload"
       ? []
@@ -187,6 +191,7 @@ export function buildWorkoutPrescription(params: {
     lift,
     phaseLabel,
     microWeek,
+    warmupSets,
     mainSets,
     supplemental,
     assistanceHint: assistanceHintFor(template),

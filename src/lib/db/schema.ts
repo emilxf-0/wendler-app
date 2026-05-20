@@ -107,6 +107,7 @@ export interface SessionRow {
   workoutIndexInMicroWeek: number;
   leaderTemplateId: string;
   anchorTemplateId: string;
+  warmupSets?: SetLogRow[];
   mainSets: SetLogRow[];
   supplemental: SupplementalLogRow[];
   /** Legacy free-text; optional notes alongside structured assistance */

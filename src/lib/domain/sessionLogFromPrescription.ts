@@ -9,8 +9,19 @@ export function completedSessionLogsFromPrescription(params: {
   prescription: WorkoutPrescription;
   tm: number;
   roundingIncrement: number;
-}): { mainSets: SetLogRow[]; supplemental: SupplementalLogRow[] } {
+}): {
+  warmupSets: SetLogRow[];
+  mainSets: SetLogRow[];
+  supplemental: SupplementalLogRow[];
+} {
   const { prescription, tm, roundingIncrement } = params;
+
+  const warmupSets: SetLogRow[] = prescription.warmupSets.map((set) => ({
+    label: set.label,
+    prescribedWeight: workingWeightForSet(tm, set.percentTm, roundingIncrement),
+    repsTarget: set.repsTarget,
+    completed: true,
+  }));
 
   const mainSets: SetLogRow[] = prescription.mainSets.map((set) => ({
     label: set.label,
@@ -29,5 +40,5 @@ export function completedSessionLogsFromPrescription(params: {
     }),
   );
 
-  return { mainSets, supplemental };
+  return { warmupSets, mainSets, supplemental };
 }

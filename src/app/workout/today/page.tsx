@@ -165,6 +165,9 @@ function TodayLogger({
   const [mainChecks, setMainChecks] = useState(
     () => prescription.mainSets.map(() => false),
   );
+  const [warmupChecks, setWarmupChecks] = useState(
+    () => prescription.warmupSets.map(() => false),
+  );
   const [suppChecks, setSuppChecks] = useState(() =>
     prescription.supplemental.map((s) =>
       Array.from({ length: s.sets }, () => false),
@@ -194,13 +197,21 @@ function TodayLogger({
         ? mainChecks
         : prescription.mainSets.map(() => false);
 
+    const warmupDone =
+      warmupChecks.length === prescription.warmupSets.length
+        ? warmupChecks
+        : prescription.warmupSets.map(() => false);
+
     const allMainDone = mainDone.length > 0 && mainDone.every(Boolean);
+    const allWarmupDone =
+      prescription.warmupSets.length === 0 ||
+      (warmupDone.length > 0 && warmupDone.every(Boolean));
     const supplementalFlatDone =
       prescription.supplemental.length === 0 ||
       suppChecks.every((sets) => sets.length > 0 && sets.every(Boolean));
 
     const confirmed = window.confirm(
-      allMainDone && supplementalFlatDone
+      allMainDone && allWarmupDone && supplementalFlatDone
         ? "Save this workout and advance your program calendar?"
         : "Some work is unchecked — still save and advance?",
     );
@@ -208,12 +219,17 @@ function TodayLogger({
 
     setBusy(true);
     try {
-      const { mainSets: allDoneMain, supplemental: allDoneSupp } =
+      const { warmupSets: allDoneWarmup, mainSets: allDoneMain, supplemental: allDoneSupp } =
         completedSessionLogsFromPrescription({
           prescription,
           tm,
           roundingIncrement: increment,
         });
+
+      const warmupLogs: SetLogRow[] = allDoneWarmup.map((row, idx) => ({
+        ...row,
+        completed: Boolean(warmupDone[idx]),
+      }));
 
       const mainLogs: SetLogRow[] = allDoneMain.map((row, idx) => ({
         ...row,
@@ -244,6 +260,7 @@ function TodayLogger({
         anchorTemplateId: snapshot.anchorTemplateId,
         mainSets: mainLogs,
         supplemental: supplementalLogs,
+        ...(warmupLogs.length ? { warmupSets: warmupLogs } : {}),
         assistanceNotes: assistanceNotes.trim(),
         ...(assistanceEntries.length > 0
           ? { assistanceEntries }
@@ -289,6 +306,52 @@ function TodayLogger({
               : "Deload"}
         </p>
       </header>
+
+      {prescription.warmupSets.length ? (
+        <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 sm:p-6">
+          <h2 className="text-lg font-medium text-white sm:text-xl">Warmup</h2>
+          <div className="space-y-3">
+            {prescription.warmupSets.map((set, idx) => {
+              const weight = workingWeightForSet(tm, set.percentTm, increment);
+              const checked = warmupChecks[idx] ?? false;
+              return (
+                <label
+                  key={`warmup-${set.label}-${idx}`}
+                  className="flex cursor-pointer items-start gap-4 rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-4"
+                >
+                  <input
+                    type="checkbox"
+                    className="touch-checkbox mt-1 accent-emerald-500"
+                    checked={checked}
+                    onChange={(e) =>
+                      setWarmupChecks((prev) => {
+                        const next = [...prev];
+                        next[idx] = e.target.checked;
+                        return next;
+                      })
+                    }
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-lg font-medium text-white">
+                        {set.label}
+                      </span>
+                      <span className="text-base font-medium text-emerald-300 sm:text-lg">
+                        {tm ? `${weight} kg` : "—"}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-sm text-zinc-500 sm:text-base">
+                      {typeof set.repsTarget === "number"
+                        ? `Target ${set.repsTarget} crisp reps`
+                        : ""}
+                    </p>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
 
       <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 sm:p-6">
         <h2 className="text-lg font-medium text-white sm:text-xl">Main work</h2>

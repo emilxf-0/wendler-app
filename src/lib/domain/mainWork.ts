@@ -77,6 +77,25 @@ export function buildMainSets(params: {
   return sets;
 }
 
+/** Standard Wendler-style ramp before working sets (fixed % and reps). */
+const WARMUP_PERCENTS: readonly [number, number, number] = [0.4, 0.5, 0.6];
+const WARMUP_REPS: readonly [number, number, number] = [5, 5, 3];
+
+export function buildWarmupSets(): MainSetPrescription[] {
+  const sets: MainSetPrescription[] = [];
+  for (let i = 0; i < 3; i++) {
+    const pct = WARMUP_PERCENTS[i];
+    const repsTarget = WARMUP_REPS[i];
+    const pctLabel = `${Math.round(pct * 100)}%`;
+    sets.push({
+      percentTm: pct,
+      repsTarget,
+      label: `${pctLabel} × ${repsTarget}`,
+    });
+  }
+  return sets;
+}
+
 /** Deload / 7th-week-style lighter progression — simplified gym prescription per lift. */
 export function buildDeloadMainSets(): MainSetPrescription[] {
   return [

@@ -219,6 +219,10 @@ function parseSessionRecord(rec: Record<string, unknown>): Omit<SessionRow, "id"
   }
 
   const mainSets = parseMainSets(rec.mainSets);
+  const warmupSets =
+    rec.warmupSets === undefined
+      ? undefined
+      : parseMainSets(rec.warmupSets);
   const supplemental = parseSupplementalLogs(rec.supplemental);
   const assistanceNotes =
     typeof rec.assistanceNotes === "string" ? rec.assistanceNotes : "";
@@ -238,6 +242,7 @@ function parseSessionRecord(rec: Record<string, unknown>): Omit<SessionRow, "id"
     mainSets,
     supplemental,
     assistanceNotes,
+    ...(warmupSets?.length ? { warmupSets } : {}),
     ...(assistanceEntries ? { assistanceEntries } : {}),
   };
 }

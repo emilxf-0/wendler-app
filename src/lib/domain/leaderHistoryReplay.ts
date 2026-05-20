@@ -94,7 +94,7 @@ function buildOneSession(params: {
     bbbLeaderMainTopSet: snapshot.bbbLeaderMainTopSet,
   });
 
-  const { mainSets, supplemental } = completedSessionLogsFromPrescription({
+  const { warmupSets, mainSets, supplemental } = completedSessionLogsFromPrescription({
     prescription,
     tm,
     roundingIncrement: settings.roundingIncrement,
@@ -108,6 +108,7 @@ function buildOneSession(params: {
     workoutIndexInMicroWeek: snapshot.workoutIndexInMicroWeek,
     leaderTemplateId: snapshot.leaderTemplateId,
     anchorTemplateId: snapshot.anchorTemplateId,
+    ...(warmupSets.length ? { warmupSets } : {}),
     mainSets,
     supplemental,
     assistanceNotes: "",
