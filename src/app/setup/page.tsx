@@ -19,9 +19,12 @@ import {
   ASSISTANCE_BY_CATEGORY,
   ASSISTANCE_CATEGORY_ORDER,
   CATEGORY_LABEL,
-  type AssistancePresetsByCategory,
+  type AssistanceTemplateByCategory,
+  type AssistanceTemplateEntry,
+  type CustomAssistanceExercise,
 } from "@/lib/domain/assistanceCatalog";
 import { optionalFiniteNumberFromInput } from "@/lib/numericInput";
+import { AssistanceExercisePicker } from "@/components/AssistanceExercisePicker";
 import { loadProgram, loadSettings, saveSettings } from "@/lib/db";
 import type { ProgramRow, SettingsRow } from "@/lib/db/schema";
 
@@ -549,27 +552,69 @@ export default function SetupPage() {
 
       <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 sm:p-6">
         <h2 className="text-lg font-medium text-white sm:text-xl">
-          Assistance defaults (Today)
+          Assistance templates (Today)
         </h2>
         <p className="text-base leading-relaxed text-zinc-400">
-          Pick a movement per Push / Pull / Single-leg / Core bucket for upper-
-          vs lower-body main days. Those choices load as the pre-selected exercise
-          on Today when you start logging assistance — handy when you repeat the
-          same accessories often.
+          Build templates with multiple movements, sets, and reps per Push /
+          Pull / Single-leg / Core bucket — separate templates for upper- vs
+          lower-body main days. Type a movement name or pick from the list; new
+          names are saved to My exercises. On Today, load the template and check
+          sets off as you go.
         </p>
+        <CustomAssistanceExercisesList row={row} persist={persist} />
         <div className="space-y-10 border-t border-zinc-800 pt-8">
-          <AssistancePresetEditor
+          <AssistanceTemplateEditor
             title="Upper-body main day"
             subtitle="Bench or press sessions."
             value={row.assistancePresetUpper}
+            customExercises={row.customAssistanceExercises}
+            onCreateCustom={(exercise) => {
+              if (
+                row.customAssistanceExercises.some(
+                  (c) =>
+                    c.id === exercise.id ||
+                    (c.category === exercise.category &&
+                      c.name.toLowerCase() === exercise.name.toLowerCase()),
+                )
+              ) {
+                return;
+              }
+              void persist({
+                ...row,
+                customAssistanceExercises: [
+                  ...row.customAssistanceExercises,
+                  exercise,
+                ].sort((a, b) => a.name.localeCompare(b.name)),
+              });
+            }}
             onPersistSlice={(slice) =>
               void persist({ ...row, assistancePresetUpper: slice })
             }
           />
-          <AssistancePresetEditor
+          <AssistanceTemplateEditor
             title="Lower-body main day"
             subtitle="Squat or deadlift sessions."
             value={row.assistancePresetLower}
+            customExercises={row.customAssistanceExercises}
+            onCreateCustom={(exercise) => {
+              if (
+                row.customAssistanceExercises.some(
+                  (c) =>
+                    c.id === exercise.id ||
+                    (c.category === exercise.category &&
+                      c.name.toLowerCase() === exercise.name.toLowerCase()),
+                )
+              ) {
+                return;
+              }
+              void persist({
+                ...row,
+                customAssistanceExercises: [
+                  ...row.customAssistanceExercises,
+                  exercise,
+                ].sort((a, b) => a.name.localeCompare(b.name)),
+              });
+            }}
             onPersistSlice={(slice) =>
               void persist({ ...row, assistancePresetLower: slice })
             }
@@ -636,51 +681,235 @@ export default function SetupPage() {
   );
 }
 
-function AssistancePresetEditor({
+function CustomAssistanceExercisesList({
+  row,
+  persist,
+}: {
+  row: SettingsRow;
+  persist: (next: SettingsRow) => void | Promise<void>;
+}) {
+  const custom = row.customAssistanceExercises;
+  return (
+    <div className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+      <h3 className="text-sm font-medium text-zinc-300">My exercises</h3>
+      {custom.length === 0 ? (
+        <p className="text-sm text-zinc-500">
+          Custom movements you add in templates or on Today appear here.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {custom.map((ex) => (
+            <li
+              key={ex.id}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2"
+            >
+              <span className="text-base text-white">{ex.name}</span>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-zinc-500">
+                  {CATEGORY_LABEL[ex.category]}
+                </span>
+                <button
+                  type="button"
+                  className="rounded-lg border border-zinc-600 px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-900"
+                  onClick={() =>
+                    void persist({
+                      ...row,
+                      customAssistanceExercises: custom.filter(
+                        (c) => c.id !== ex.id,
+                      ),
+                    })
+                  }
+                >
+                  Remove
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function defaultTemplateEntry(
+  category: (typeof ASSISTANCE_CATEGORY_ORDER)[number],
+): AssistanceTemplateEntry {
+  const first = ASSISTANCE_BY_CATEGORY[category][0];
+  return {
+    exerciseId: first?.id ?? "",
+    sets: 5,
+    reps: 10,
+  };
+}
+
+function AssistanceTemplateEditor({
   title,
   subtitle,
   value,
+  customExercises,
+  onCreateCustom,
   onPersistSlice,
 }: {
   title: string;
   subtitle: string;
-  value: AssistancePresetsByCategory;
-  onPersistSlice: (next: AssistancePresetsByCategory) => void;
+  value: AssistanceTemplateByCategory;
+  customExercises: CustomAssistanceExercise[];
+  onCreateCustom: (exercise: CustomAssistanceExercise) => void;
+  onPersistSlice: (next: AssistanceTemplateByCategory) => void;
 }) {
+  function updateCategory(
+    category: (typeof ASSISTANCE_CATEGORY_ORDER)[number],
+    entries: AssistanceTemplateEntry[],
+  ) {
+    const next: AssistanceTemplateByCategory = { ...value };
+    if (entries.length === 0) {
+      delete next[category];
+    } else {
+      next[category] = entries;
+    }
+    onPersistSlice(next);
+  }
+
+  function updateEntry(
+    category: (typeof ASSISTANCE_CATEGORY_ORDER)[number],
+    index: number,
+    patch: Partial<AssistanceTemplateEntry>,
+  ) {
+    const current = [...(value[category] ?? [])];
+    const row = current[index];
+    if (!row) return;
+    current[index] = { ...row, ...patch };
+    updateCategory(category, current);
+  }
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div>
         <h3 className="text-base font-medium text-white sm:text-lg">{title}</h3>
         <p className="mt-1 text-sm text-zinc-500 sm:text-base">{subtitle}</p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        {ASSISTANCE_CATEGORY_ORDER.map((cat) => (
-          <label key={cat} className="flex flex-col gap-2 text-base">
-            <span className="text-zinc-300">{CATEGORY_LABEL[cat]}</span>
-            <select
-              className="touch-control rounded-xl border border-zinc-700 bg-zinc-950 text-white"
-              value={value[cat] ?? ""}
-              onChange={(e) => {
-                const v = e.target.value;
-                const next: AssistancePresetsByCategory = { ...value };
-                if (v === "") {
-                  delete next[cat];
-                } else {
-                  next[cat] = v;
-                }
-                onPersistSlice(next);
-              }}
+      {ASSISTANCE_CATEGORY_ORDER.map((cat) => {
+        const entries = value[cat] ?? [];
+        return (
+          <div
+            key={cat}
+            className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4"
+          >
+            <h4 className="text-sm font-semibold uppercase tracking-wide text-emerald-400/90">
+              {CATEGORY_LABEL[cat]}
+            </h4>
+            {entries.length === 0 ? (
+              <p className="text-sm text-zinc-500">No exercises in template.</p>
+            ) : (
+              <ul className="space-y-3">
+                {entries.map((entry, idx) => (
+                  <li
+                    key={`${cat}-${idx}-${entry.exerciseId}`}
+                    className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end"
+                  >
+                    <label className="min-w-[min(100%,14rem)] flex-1">
+                      <span className="mb-1 block text-xs text-zinc-500">
+                        Movement
+                      </span>
+                      <AssistanceExercisePicker
+                        category={cat}
+                        customExercises={customExercises}
+                        exerciseId={entry.exerciseId}
+                        onExerciseIdChange={(id) =>
+                          updateEntry(cat, idx, { exerciseId: id })
+                        }
+                        onCreateCustom={onCreateCustom}
+                        commitOnBlur
+                        allowCreateOnBlur
+                        className="touch-control w-full rounded-xl border border-zinc-700 bg-zinc-950 text-white"
+                      />
+                    </label>
+                    <label className="flex w-[4.5rem] flex-col gap-1 text-xs text-zinc-500">
+                      Sets
+                      <input
+                        type="number"
+                        min={1}
+                        max={99}
+                        inputMode="numeric"
+                        className="touch-control w-full rounded-xl border border-zinc-700 bg-zinc-950 text-center text-white"
+                        value={entry.sets}
+                        onChange={(e) => {
+                          const n = optionalFiniteNumberFromInput(e.target.value);
+                          if (n !== undefined && n >= 1) {
+                            updateEntry(cat, idx, { sets: Math.floor(n) });
+                          }
+                        }}
+                      />
+                    </label>
+                    <label className="flex w-[4.5rem] flex-col gap-1 text-xs text-zinc-500">
+                      Reps
+                      <input
+                        type="number"
+                        min={1}
+                        max={999}
+                        inputMode="numeric"
+                        className="touch-control w-full rounded-xl border border-zinc-700 bg-zinc-950 text-center text-white"
+                        value={entry.reps}
+                        onChange={(e) => {
+                          const n = optionalFiniteNumberFromInput(e.target.value);
+                          if (n !== undefined && n >= 1) {
+                            updateEntry(cat, idx, { reps: Math.floor(n) });
+                          }
+                        }}
+                      />
+                    </label>
+                    <label className="flex w-[5.5rem] flex-col gap-1 text-xs text-zinc-500">
+                      kg
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="BW"
+                        className="touch-control w-full rounded-xl border border-zinc-700 bg-zinc-950 text-center text-white placeholder:text-zinc-600"
+                        value={
+                          entry.weightKg == null ? "" : String(entry.weightKg)
+                        }
+                        onChange={(e) => {
+                          const t = e.target.value.trim();
+                          if (t === "") {
+                            updateEntry(cat, idx, { weightKg: null });
+                            return;
+                          }
+                          const n = Number(t.replace(",", "."));
+                          if (!Number.isNaN(n) && n >= 0) {
+                            updateEntry(cat, idx, { weightKg: n });
+                          }
+                        }}
+                        aria-label="Weight in kg, leave empty for bodyweight"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="min-h-11 rounded-xl border border-zinc-600 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-900"
+                      onClick={() =>
+                        updateCategory(
+                          cat,
+                          entries.filter((_, i) => i !== idx),
+                        )
+                      }
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <button
+              type="button"
+              className="min-h-11 rounded-xl border border-emerald-700/60 px-4 py-2 text-sm font-medium text-emerald-400 hover:bg-emerald-950/40"
+              onClick={() =>
+                updateCategory(cat, [...entries, defaultTemplateEntry(cat)])
+              }
             >
-              <option value="">None</option>
-              {ASSISTANCE_BY_CATEGORY[cat].map((ex) => (
-                <option key={ex.id} value={ex.id}>
-                  {ex.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        ))}
-      </div>
+              Add exercise
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -5,9 +5,17 @@
 
 export type AssistanceCategory = "push" | "pull" | "single_leg" | "core";
 
-/** Optional default assistance movement IDs per bucket (Setup → Today). */
-export type AssistancePresetsByCategory = Partial<
-  Record<AssistanceCategory, string>
+export interface AssistanceTemplateEntry {
+  exerciseId: string;
+  sets: number;
+  reps: number;
+  /** Omit or null = bodyweight. */
+  weightKg?: number | null;
+}
+
+/** Assistance templates per bucket (Setup → Today). */
+export type AssistanceTemplateByCategory = Partial<
+  Record<AssistanceCategory, AssistanceTemplateEntry[]>
 >;
 
 export interface AssistanceExercise {
@@ -15,6 +23,18 @@ export interface AssistanceExercise {
   name: string;
   category: AssistanceCategory;
 }
+
+/** User-defined movements stored in Settings. */
+export interface CustomAssistanceExercise {
+  id: string;
+  name: string;
+  category: AssistanceCategory;
+}
+
+export type ResolveAssistanceResult =
+  | { kind: "existing"; exerciseId: string }
+  | { kind: "created"; exerciseId: string; exercise: CustomAssistanceExercise }
+  | { kind: "invalid" };
 
 export const CATEGORY_LABEL: Record<AssistanceCategory, string> = {
   push: "Push",
@@ -124,31 +144,273 @@ export const ASSISTANCE_BY_CATEGORY: Record<
 
 const byId = new Map(RAW.map((e) => [e.id, e]));
 
+function customToAssistanceExercise(
+  c: CustomAssistanceExercise,
+): AssistanceExercise {
+  return { id: c.id, name: c.name, category: c.category };
+}
+
+function slugifyExerciseName(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_|_$/g, "")
+      .slice(0, 40) || "exercise"
+  );
+}
+
+export function createCustomAssistanceExercise(
+  name: string,
+  category: AssistanceCategory,
+): CustomAssistanceExercise {
+  const trimmed = name.trim();
+  const suffix = Math.random().toString(36).slice(2, 6);
+  return {
+    id: `custom_${slugifyExerciseName(trimmed)}_${suffix}`,
+    name: trimmed,
+    category,
+  };
+}
+
+export function exercisesForCategory(
+  category: AssistanceCategory,
+  custom: readonly CustomAssistanceExercise[] = [],
+): AssistanceExercise[] {
+  const customs = custom
+    .filter((c) => c.category === category)
+    .map(customToAssistanceExercise);
+  return [...ASSISTANCE_BY_CATEGORY[category], ...customs].sort(sortByName);
+}
+
+export function allAssistanceExercises(
+  custom: readonly CustomAssistanceExercise[] = [],
+): AssistanceExercise[] {
+  return [...ASSISTANCE_EXERCISES, ...custom.map(customToAssistanceExercise)].sort(
+    sortByName,
+  );
+}
+
 export function getAssistanceExercise(
   id: string,
+  custom: readonly CustomAssistanceExercise[] = [],
 ): AssistanceExercise | undefined {
-  return byId.get(id);
+  const builtIn = byId.get(id);
+  if (builtIn) return builtIn;
+  const customEx = custom.find((c) => c.id === id);
+  return customEx ? customToAssistanceExercise(customEx) : undefined;
 }
 
-export function assistanceDisplayName(id: string): string {
-  return byId.get(id)?.name ?? id;
+export function assistanceDisplayName(
+  id: string,
+  custom: readonly CustomAssistanceExercise[] = [],
+): string {
+  return getAssistanceExercise(id, custom)?.name ?? id;
 }
 
-export function assistanceCategoryOf(id: string): AssistanceCategory | undefined {
-  return byId.get(id)?.category;
+export function assistanceCategoryOf(
+  id: string,
+  custom: readonly CustomAssistanceExercise[] = [],
+): AssistanceCategory | undefined {
+  return getAssistanceExercise(id, custom)?.category;
 }
 
-export function sanitizeAssistancePresets(
+export function findAssistanceExerciseByName(
+  name: string,
+  category: AssistanceCategory,
+  custom: readonly CustomAssistanceExercise[] = [],
+): AssistanceExercise | undefined {
+  const trimmed = name.trim();
+  if (!trimmed) return undefined;
+  const lower = trimmed.toLowerCase();
+  for (const ex of ASSISTANCE_BY_CATEGORY[category]) {
+    if (ex.name.toLowerCase() === lower) return ex;
+  }
+  for (const c of custom) {
+    if (c.category === category && c.name.toLowerCase() === lower) {
+      return customToAssistanceExercise(c);
+    }
+  }
+  return undefined;
+}
+
+export function resolveAssistanceExercise(
+  input: string,
+  category: AssistanceCategory,
+  custom: readonly CustomAssistanceExercise[] = [],
+  options?: { createIfMissing?: boolean },
+): ResolveAssistanceResult {
+  const trimmed = input.trim();
+  if (!trimmed) return { kind: "invalid" };
+
+  const byIdMatch = getAssistanceExercise(trimmed, custom);
+  if (byIdMatch?.category === category) {
+    return { kind: "existing", exerciseId: byIdMatch.id };
+  }
+
+  const byName = findAssistanceExerciseByName(trimmed, category, custom);
+  if (byName) {
+    return { kind: "existing", exerciseId: byName.id };
+  }
+
+  if (options?.createIfMissing === false) {
+    return { kind: "invalid" };
+  }
+
+  const exercise = createCustomAssistanceExercise(trimmed, category);
+  return { kind: "created", exerciseId: exercise.id, exercise };
+}
+
+export function sanitizeCustomAssistanceExercises(
   raw: unknown,
-): AssistancePresetsByCategory {
+): CustomAssistanceExercise[] {
+  if (!Array.isArray(raw)) return [];
+  const seenIds = new Set<string>();
+  const seenNamesByCategory = new Map<AssistanceCategory, Set<string>>();
+  const out: CustomAssistanceExercise[] = [];
+
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const id = typeof o.id === "string" ? o.id.trim() : "";
+    const name = typeof o.name === "string" ? o.name.trim() : "";
+    const category = o.category;
+    if (
+      !id.startsWith("custom_") ||
+      !name ||
+      !ASSISTANCE_CATEGORY_ORDER.includes(category as AssistanceCategory)
+    ) {
+      continue;
+    }
+    if (seenIds.has(id)) continue;
+    const cat = category as AssistanceCategory;
+    const names = seenNamesByCategory.get(cat) ?? new Set<string>();
+    if (names.has(name.toLowerCase())) continue;
+    names.add(name.toLowerCase());
+    seenNamesByCategory.set(cat, names);
+    seenIds.add(id);
+    out.push({ id, name, category: cat });
+  }
+
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function sanitizeTemplateEntry(
+  raw: unknown,
+  category: AssistanceCategory,
+  custom: readonly CustomAssistanceExercise[] = [],
+): AssistanceTemplateEntry | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const exerciseId = o.exerciseId;
+  if (typeof exerciseId !== "string" || exerciseId === "") return undefined;
+  const ex = getAssistanceExercise(exerciseId, custom);
+  if (ex?.category !== category) return undefined;
+
+  const setsN = o.sets;
+  const repsN = o.reps;
+  if (
+    typeof setsN !== "number" ||
+    !Number.isFinite(setsN) ||
+    setsN < 1 ||
+    setsN > 99
+  ) {
+    return undefined;
+  }
+  if (
+    typeof repsN !== "number" ||
+    !Number.isFinite(repsN) ||
+    repsN < 1 ||
+    repsN > 999
+  ) {
+    return undefined;
+  }
+
+  let weightKg: number | null | undefined;
+  if ("weightKg" in o) {
+    const w = o.weightKg;
+    if (w === null || w === undefined) {
+      weightKg = null;
+    } else if (typeof w === "number" && Number.isFinite(w) && w >= 0) {
+      weightKg = w;
+    } else {
+      return undefined;
+    }
+  }
+
+  const entry: AssistanceTemplateEntry = {
+    exerciseId,
+    sets: Math.floor(setsN),
+    reps: Math.floor(repsN),
+  };
+  if (weightKg !== undefined) entry.weightKg = weightKg;
+  return entry;
+}
+
+function sanitizeCategoryTemplate(
+  raw: unknown,
+  category: AssistanceCategory,
+  custom: readonly CustomAssistanceExercise[] = [],
+): AssistanceTemplateEntry[] | undefined {
+  if (typeof raw === "string" && raw !== "") {
+    const ex = getAssistanceExercise(raw, custom);
+    if (ex?.category !== category) return undefined;
+    return [{ exerciseId: raw, sets: 1, reps: 10 }];
+  }
+  if (!Array.isArray(raw)) return undefined;
+  const entries: AssistanceTemplateEntry[] = [];
+  for (const item of raw) {
+    const entry = sanitizeTemplateEntry(item, category, custom);
+    if (entry) entries.push(entry);
+  }
+  return entries.length > 0 ? entries : undefined;
+}
+
+export function sanitizeAssistanceTemplate(
+  raw: unknown,
+  custom: readonly CustomAssistanceExercise[] = [],
+): AssistanceTemplateByCategory {
   if (!raw || typeof raw !== "object") return {};
   const o = raw as Record<string, unknown>;
-  const out: AssistancePresetsByCategory = {};
+  const out: AssistanceTemplateByCategory = {};
   for (const cat of ASSISTANCE_CATEGORY_ORDER) {
-    const id = o[cat];
-    if (typeof id !== "string" || id === "") continue;
-    const ex = getAssistanceExercise(id);
-    if (ex?.category === cat) out[cat] = id;
+    const entries = sanitizeCategoryTemplate(o[cat], cat, custom);
+    if (entries) out[cat] = entries;
   }
   return out;
+}
+
+export function templateSetCount(
+  template: AssistanceTemplateByCategory,
+): number {
+  let n = 0;
+  for (const cat of ASSISTANCE_CATEGORY_ORDER) {
+    for (const entry of template[cat] ?? []) {
+      n += entry.sets;
+    }
+  }
+  return n;
+}
+
+export function expandTemplateToLines(
+  template: AssistanceTemplateByCategory,
+): Array<{ exerciseId: string; reps: number; weightKg: number | null }> {
+  const lines: Array<{
+    exerciseId: string;
+    reps: number;
+    weightKg: number | null;
+  }> = [];
+  for (const cat of ASSISTANCE_CATEGORY_ORDER) {
+    for (const entry of template[cat] ?? []) {
+      const weightKg = entry.weightKg ?? null;
+      for (let i = 0; i < entry.sets; i++) {
+        lines.push({
+          exerciseId: entry.exerciseId,
+          reps: entry.reps,
+          weightKg,
+        });
+      }
+    }
+  }
+  return lines;
 }

@@ -80,6 +80,7 @@ export function defaultSettings() {
     supplementalBbbPercentOverride: null,
     assistancePresetUpper: {},
     assistancePresetLower: {},
+    customAssistanceExercises: [],
     lastBackupAt: null,
   };
 }

@@ -1,4 +1,7 @@
-import { sanitizeAssistancePresets } from "@/lib/domain/assistanceCatalog";
+import {
+  sanitizeAssistanceTemplate,
+  sanitizeCustomAssistanceExercises,
+} from "@/lib/domain/assistanceCatalog";
 import { defaultSettings } from "@/lib/domain/programFlow";
 import { parseSupplementalPercentOverride } from "@/lib/domain/supplementalPercent";
 import { LIFTS } from "@/lib/domain/types";
@@ -53,6 +56,10 @@ export function normalizeStoredSettings(raw: StoredSettingsShape): SettingsRow {
         ? lbRaw
         : null;
 
+  const customAssistanceExercises = sanitizeCustomAssistanceExercises(
+    (raw as { customAssistanceExercises?: unknown }).customAssistanceExercises,
+  );
+
   return {
     id,
     roundingIncrement,
@@ -66,12 +73,15 @@ export function normalizeStoredSettings(raw: StoredSettingsShape): SettingsRow {
       (raw as { supplementalBbbPercentOverride?: unknown })
         .supplementalBbbPercentOverride,
     ),
-    assistancePresetUpper: sanitizeAssistancePresets(
+    assistancePresetUpper: sanitizeAssistanceTemplate(
       (raw as { assistancePresetUpper?: unknown }).assistancePresetUpper,
+      customAssistanceExercises,
     ),
-    assistancePresetLower: sanitizeAssistancePresets(
+    assistancePresetLower: sanitizeAssistanceTemplate(
       (raw as { assistancePresetLower?: unknown }).assistancePresetLower,
+      customAssistanceExercises,
     ),
+    customAssistanceExercises,
     lastBackupAt,
   };
 }
@@ -90,6 +100,7 @@ export function storedSettingsPut(row: SettingsRow): SettingsRow & {
     supplementalBbbPercentOverride: row.supplementalBbbPercentOverride,
     assistancePresetUpper: row.assistancePresetUpper,
     assistancePresetLower: row.assistancePresetLower,
+    customAssistanceExercises: row.customAssistanceExercises,
     lastBackupAt: row.lastBackupAt ?? null,
   };
 }

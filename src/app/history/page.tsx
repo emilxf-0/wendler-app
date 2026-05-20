@@ -7,6 +7,7 @@ import {
   assistanceCategoryOf,
   assistanceDisplayName,
   type AssistanceCategory,
+  type CustomAssistanceExercise,
 } from "@/lib/domain/assistanceCatalog";
 import { LIFT_LABEL } from "@/lib/domain/types";
 import {
@@ -365,7 +366,10 @@ export default function HistoryPage() {
               ) : null}
               {session.assistanceEntries?.length ||
               session.assistanceNotes?.trim() ? (
-                <SessionAssistanceBlock session={session} />
+                <SessionAssistanceBlock
+                  session={session}
+                  customExercises={settings?.customAssistanceExercises ?? []}
+                />
               ) : null}
             </li>
           ))}
@@ -392,7 +396,13 @@ function clusterByExercise(entries: AssistanceEntryStored[]) {
   }));
 }
 
-function SessionAssistanceBlock({ session }: { session: SessionRow }) {
+function SessionAssistanceBlock({
+  session,
+  customExercises,
+}: {
+  session: SessionRow;
+  customExercises: CustomAssistanceExercise[];
+}) {
   const entries = session.assistanceEntries ?? [];
   const notes = session.assistanceNotes?.trim() ?? "";
 
@@ -403,7 +413,7 @@ function SessionAssistanceBlock({ session }: { session: SessionRow }) {
   }
 
   for (const e of entries) {
-    const cat = assistanceCategoryOf(e.exerciseId);
+    const cat = assistanceCategoryOf(e.exerciseId, customExercises);
     if (cat) byCat.get(cat)!.push(e);
     else unknown.push(e);
   }
@@ -428,7 +438,7 @@ function SessionAssistanceBlock({ session }: { session: SessionRow }) {
                   {clusters.map(({ exerciseId, items }) => (
                     <div key={exerciseId}>
                       <div className="font-medium text-zinc-100">
-                        {assistanceDisplayName(exerciseId)}
+                        {assistanceDisplayName(exerciseId, customExercises)}
                       </div>
                       <ul className="mt-1 list-inside list-disc space-y-1 text-zinc-400">
                         {items.map((item, i) => (
@@ -452,7 +462,7 @@ function SessionAssistanceBlock({ session }: { session: SessionRow }) {
                 {clusterByExercise(unknown).map(({ exerciseId, items }) => (
                   <div key={exerciseId}>
                     <div className="font-medium text-zinc-100">
-                      {assistanceDisplayName(exerciseId)}
+                      {assistanceDisplayName(exerciseId, customExercises)}
                     </div>
                     <ul className="mt-1 list-inside list-disc space-y-1 text-zinc-400">
                       {items.map((item, i) => (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   advanceAfterCompletedWorkout,
   effectiveTemplate,
@@ -24,8 +24,9 @@ import {
   loadProgram,
   loadSettings,
   saveProgram,
+  saveSettings,
 } from "@/lib/db";
-import type { AssistancePresetsByCategory } from "@/lib/domain/assistanceCatalog";
+import type { AssistanceTemplateByCategory } from "@/lib/domain/assistanceCatalog";
 import type {
   ProgramRow,
   SetLogRow,
@@ -35,12 +36,31 @@ import type {
 import {
   AssistanceSection,
   stripAssistanceLines,
-  type AssistanceLine,
+  type AssistanceWorkItem,
 } from "@/components/AssistanceSection";
+
+const WORKOUT_SAVED_FLASH_MS = 1500;
 
 export default function TodayPage() {
   const [program, setProgram] = useState<ProgramRow | null>(null);
   const [settings, setSettings] = useState<SettingsRow | null>(null);
+  const [savedFlash, setSavedFlash] = useState<string | null>(null);
+  const savedFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (savedFlashTimerRef.current) clearTimeout(savedFlashTimerRef.current);
+    };
+  }, []);
+
+  function showWorkoutSavedFlash(message: string) {
+    setSavedFlash(message);
+    if (savedFlashTimerRef.current) clearTimeout(savedFlashTimerRef.current);
+    savedFlashTimerRef.current = setTimeout(() => {
+      setSavedFlash(null);
+      savedFlashTimerRef.current = null;
+    }, WORKOUT_SAVED_FLASH_MS);
+  }
 
   useEffect(() => {
     void (async () => {
@@ -88,7 +108,7 @@ export default function TodayPage() {
     });
   }, [snapshot, lift, settings, supplementalLift]);
 
-  const assistancePresetsByCategory: AssistancePresetsByCategory =
+  const assistanceTemplateByCategory: AssistanceTemplateByCategory =
     useMemo(() => {
       if (!lift || !settings) return {};
       return mainLiftIsUpperBody(lift)
@@ -129,17 +149,30 @@ export default function TodayPage() {
   const sessionKey = `${lift}-${snapshot.phase}-${snapshot.microWeek}-${snapshot.workoutIndexInMicroWeek}`;
 
   return (
-    <TodayLogger
-      key={sessionKey}
-      program={program}
-      setProgram={setProgram}
-      settings={settings}
-      snapshot={snapshot}
-      lift={lift}
-      prescription={prescription}
-      supplementalTm={supplementalTm}
-      assistancePresetsByCategory={assistancePresetsByCategory}
-    />
+    <div className="space-y-4">
+      {savedFlash ? (
+        <p
+          className="rounded-xl border border-emerald-800/60 bg-emerald-950/40 px-4 py-3 text-base text-emerald-400"
+          role="status"
+          aria-live="polite"
+        >
+          {savedFlash}
+        </p>
+      ) : null}
+      <TodayLogger
+        key={sessionKey}
+        program={program}
+        setProgram={setProgram}
+        settings={settings}
+        snapshot={snapshot}
+        lift={lift}
+        prescription={prescription}
+        supplementalTm={supplementalTm}
+        assistanceTemplateByCategory={assistanceTemplateByCategory}
+        setSettings={setSettings}
+        onWorkoutSaved={showWorkoutSavedFlash}
+      />
+    </div>
   );
 }
 
@@ -151,16 +184,20 @@ function TodayLogger({
   lift,
   prescription,
   supplementalTm,
-  assistancePresetsByCategory,
+  assistanceTemplateByCategory,
+  setSettings,
+  onWorkoutSaved,
 }: {
   program: ProgramRow;
   setProgram: (p: ProgramRow) => void;
   settings: SettingsRow;
+  setSettings: (s: SettingsRow) => void;
   snapshot: ActiveProgramSnapshot;
   lift: LiftId;
   prescription: WorkoutPrescription;
   supplementalTm: number;
-  assistancePresetsByCategory: AssistancePresetsByCategory;
+  assistanceTemplateByCategory: AssistanceTemplateByCategory;
+  onWorkoutSaved: (message: string) => void;
 }) {
   const [mainChecks, setMainChecks] = useState(
     () => prescription.mainSets.map(() => false),
@@ -174,7 +211,9 @@ function TodayLogger({
     ),
   );
   const [assistanceNotes, setAssistanceNotes] = useState("");
-  const [assistanceLines, setAssistanceLines] = useState<AssistanceLine[]>([]);
+  const [assistanceItems, setAssistanceItems] = useState<AssistanceWorkItem[]>(
+    [],
+  );
   const [busy, setBusy] = useState(false);
 
   const tm = settings.trainingMaxes[lift] ?? 0;
@@ -209,9 +248,15 @@ function TodayLogger({
     const supplementalFlatDone =
       prescription.supplemental.length === 0 ||
       suppChecks.every((sets) => sets.length > 0 && sets.every(Boolean));
+    const allAssistanceDone =
+      assistanceItems.length === 0 ||
+      assistanceItems.every((item) => item.completed);
 
     const confirmed = window.confirm(
-      allMainDone && allWarmupDone && supplementalFlatDone
+      allMainDone &&
+        allWarmupDone &&
+        supplementalFlatDone &&
+        allAssistanceDone
         ? "Save this workout and advance your program calendar?"
         : "Some work is unchecked — still save and advance?",
     );
@@ -248,7 +293,9 @@ function TodayLogger({
         },
       );
 
-      const assistanceEntries = stripAssistanceLines(assistanceLines);
+      const assistanceEntries = stripAssistanceLines(
+        assistanceItems.filter((i) => i.completed),
+      );
 
       await addSession({
         createdAt: Date.now(),
@@ -274,6 +321,7 @@ function TodayLogger({
       });
 
       setProgram({ ...program, ...next });
+      onWorkoutSaved(`${LIFT_LABEL[lift]} workout saved — calendar advanced.`);
       if (milestones.length) {
         window.alert(milestones.join("\n"));
       }
@@ -467,9 +515,18 @@ function TodayLogger({
         hint={prescription.assistanceHint}
         notes={assistanceNotes}
         onNotesChange={setAssistanceNotes}
-        lines={assistanceLines}
-        onLinesChange={setAssistanceLines}
-        presetsByCategory={assistancePresetsByCategory}
+        items={assistanceItems}
+        onItemsChange={setAssistanceItems}
+        templateByCategory={assistanceTemplateByCategory}
+        customExercises={settings.customAssistanceExercises}
+        onCustomExercisesChange={(next) => {
+          const nextSettings = {
+            ...settings,
+            customAssistanceExercises: next,
+          };
+          setSettings(nextSettings);
+          void saveSettings(nextSettings);
+        }}
       />
 
       <button
@@ -478,7 +535,7 @@ function TodayLogger({
         className="min-h-14 w-full rounded-2xl bg-emerald-600 py-4 text-lg font-semibold text-black hover:bg-emerald-500 disabled:opacity-50 active:bg-emerald-600"
         onClick={() => void handleComplete()}
       >
-        Complete workout
+        {busy ? "Saving…" : "Complete workout"}
       </button>
     </div>
   );

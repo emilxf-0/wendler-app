@@ -1,6 +1,7 @@
 import Dexie, { type Table } from "dexie";
 import {
-  type AssistancePresetsByCategory,
+  type AssistanceTemplateByCategory,
+  type CustomAssistanceExercise,
 } from "@/lib/domain/assistanceCatalog";
 import {
   type BbbLeaderMainTopSet,
@@ -20,9 +21,11 @@ export interface SettingsRow {
   /** BBB supplemental as fraction of supplemental TM — `null` means use Leader template % */
   supplementalBbbPercentOverride: number | null;
   /** Default assistance picks when today's main lift is bench or press */
-  assistancePresetUpper: AssistancePresetsByCategory;
+  assistancePresetUpper: AssistanceTemplateByCategory;
   /** Default assistance picks when today's main lift is squat or deadlift */
-  assistancePresetLower: AssistancePresetsByCategory;
+  assistancePresetLower: AssistanceTemplateByCategory;
+  /** User-defined assistance movements (global, reusable). */
+  customAssistanceExercises: CustomAssistanceExercise[];
   /** Local device: last successful JSON backup (epoch ms), not synced. */
   lastBackupAt: number | null;
 }
